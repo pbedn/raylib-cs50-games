@@ -1,0 +1,21 @@
+# Sublime & clang
+compile_commands.json
+*.sublime*
+.cache/
+
+# Object files
+*.o
+
+# Libraries
+# *.lib
+# *.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+
+# Executables
+*.exe
+*.out
+*.app
