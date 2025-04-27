@@ -14,3 +14,14 @@
 void UpdateDrawFrame(RenderTexture2D target);
 void GameLogic(float deltaTime);
 void DrawGame(void);
+
+typedef struct {
+    Texture2D image;
+    int width;
+    int height;
+    // position bird in the middle of the screen
+    int x;
+    int y;
+} Bird;
+
+void DrawBird(Bird bird);

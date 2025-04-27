@@ -1,4 +1,5 @@
 #include "game.h"
+#include "raylib.h"
 
 #define MAX(a, b) ((a)>(b)? (a) : (b))
 #define MIN(a, b) ((a)<(b)? (a) : (b))
@@ -18,11 +19,14 @@ float groundScroll = 0.0f;
 #define GROUND_SCROLL_SPEED 60
 #define BACKGROUND_LOOPING_POINT 413
 
+Bird bird;
+
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
     /* Initialization: Set up the window and load game resources. */
-
+    SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Flappy Bird");
 
 
@@ -32,6 +36,13 @@ int main(void) {
 
     background = LoadTexture("res/background.png");
     ground = LoadTexture("res/ground.png");
+    bird = (Bird){
+        .image = LoadTexture("res/bird.png"),
+        .width = 38,
+        .height = 24,
+        .x = gameScreenWidth / 2 - (38 / 2),
+        .y = gameScreenHeight / 2 - (24 / 2)
+    };
 
     SetTargetFPS(60);
 
@@ -72,11 +83,11 @@ void GameLogic(float dt)
 {
     // scroll background by preset speed * dt, looping back to 0 after the looping point
     backgroundScroll = fmodf((backgroundScroll + BACKGROUND_SCROLL_SPEED * dt), BACKGROUND_LOOPING_POINT);
-    printf("backgroundScroll: %f\n", backgroundScroll);
+    // printf("backgroundScroll: %f\n", backgroundScroll);
 
     // scroll ground by preset speed * dt, looping back to 0 after the screen width passes
     groundScroll = fmodf((groundScroll + GROUND_SCROLL_SPEED * dt), gameScreenWidth);
-    printf("groundScroll: %f\n", groundScroll);
+    // printf("groundScroll: %f\n", groundScroll);
 }
 
 void DrawGame()
@@ -86,4 +97,11 @@ void DrawGame()
     DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
     DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
     DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
+
+    DrawBird(bird);
+}
+
+void DrawBird(Bird bird)
+{
+    DrawTexture(bird.image, bird.x, bird.y, WHITE);
 }
