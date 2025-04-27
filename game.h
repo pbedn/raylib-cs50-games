@@ -6,10 +6,10 @@
 #include <float.h>
 #include <stddef.h>
 #include <unistd.h>
+#include <math.h>
 
 #include "raylib.h"
 #include "raymath.h"
-
 
 void UpdateDrawFrame(RenderTexture2D target);
 void GameLogic(float deltaTime);

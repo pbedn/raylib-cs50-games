@@ -1,5 +1,4 @@
 #include "game.h"
-#include "raylib.h"
 
 #define MAX(a, b) ((a)>(b)? (a) : (b))
 #define MIN(a, b) ((a)<(b)? (a) : (b))
@@ -12,6 +11,12 @@ int gameScreenHeight = 288;
 
 Texture2D background;
 Texture2D ground;
+float backgroundScroll = 0.0f;
+float groundScroll = 0.0f;
+
+#define BACKGROUND_SCROLL_SPEED 30
+#define GROUND_SCROLL_SPEED 60
+#define BACKGROUND_LOOPING_POINT 413
 
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
@@ -23,12 +28,10 @@ int main(void) {
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
-    SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);  // Texture scale filter to use
+    SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  // Texture scale filter to use
 
     background = LoadTexture("res/background.png");
-    SetTextureFilter(background, TEXTURE_FILTER_POINT);
     ground = LoadTexture("res/ground.png");
-    SetTextureFilter(ground, TEXTURE_FILTER_POINT);
 
     SetTargetFPS(60);
 
@@ -38,7 +41,6 @@ int main(void) {
     }
 
     /* De-Initialization: Clean up resources and close the window. */
-
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
@@ -50,7 +52,6 @@ void UpdateDrawFrame(RenderTexture2D target)
     // Compute required framebuffer scaling
     float scale = MIN((float)GetScreenWidth()/gameScreenWidth, (float)GetScreenHeight()/gameScreenHeight);
 
-    
     GameLogic(deltaTime);
 
     BeginTextureMode(target);
@@ -67,14 +68,22 @@ void UpdateDrawFrame(RenderTexture2D target)
     EndDrawing();
 }
 
-void GameLogic(float deltaTime)
+void GameLogic(float dt)
 {
+    // scroll background by preset speed * dt, looping back to 0 after the looping point
+    backgroundScroll = fmodf((backgroundScroll + BACKGROUND_SCROLL_SPEED * dt), BACKGROUND_LOOPING_POINT);
+    printf("backgroundScroll: %f\n", backgroundScroll);
 
+    // scroll ground by preset speed * dt, looping back to 0 after the screen width passes
+    groundScroll = fmodf((groundScroll + GROUND_SCROLL_SPEED * dt), gameScreenWidth);
+    printf("groundScroll: %f\n", groundScroll);
 }
 
 void DrawGame()
 {
     ClearBackground(SKYBLUE);
-    DrawTexture(background, 0, 0, WHITE);
-    DrawTexture(ground, 0, gameScreenHeight - 16, WHITE);
+    DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
+    DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
+    DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
+    DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
 }
