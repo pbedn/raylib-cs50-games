@@ -21,6 +21,7 @@ float groundScroll = 0.0f;
 
 Bird bird;
 
+#define GRAVITY 20
 
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
@@ -36,13 +37,8 @@ int main(void) {
 
     background = LoadTexture("res/background.png");
     ground = LoadTexture("res/ground.png");
-    bird = (Bird){
-        .image = LoadTexture("res/bird.png"),
-        .width = 38,
-        .height = 24,
-        .x = gameScreenWidth / 2 - (38 / 2),
-        .y = gameScreenHeight / 2 - (24 / 2)
-    };
+
+    InitBird(&bird);
 
     SetTargetFPS(60);
 
@@ -88,6 +84,8 @@ void GameLogic(float dt)
     // scroll ground by preset speed * dt, looping back to 0 after the screen width passes
     groundScroll = fmodf((groundScroll + GROUND_SCROLL_SPEED * dt), gameScreenWidth);
     // printf("groundScroll: %f\n", groundScroll);
+
+    UpdateBird(dt, &bird);
 }
 
 void DrawGame()
@@ -98,10 +96,28 @@ void DrawGame()
     DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
     DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
 
-    DrawBird(bird);
+    DrawBird(&bird);
 }
 
-void DrawBird(Bird bird)
+void InitBird(Bird *bird)
 {
-    DrawTexture(bird.image, bird.x, bird.y, WHITE);
+    bird->image = LoadTexture("res/bird.png");
+    bird->width = 38;
+    bird->height = 24;
+    bird->x = gameScreenWidth / 2 - (38 / 2);
+    bird->y = gameScreenHeight / 2 - (24 / 2);
+    bird->dy = 0;
+}
+
+void UpdateBird(float dt, Bird *bird)
+{
+    // apply gravity to velocity
+    bird->dy += GRAVITY * dt;
+    // apply current velocity to Y position
+    bird->y += bird->dy;
+}
+
+void DrawBird(Bird *bird)
+{
+    DrawTexture(bird->image, bird->x, bird->y, WHITE);
 }

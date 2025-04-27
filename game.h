@@ -22,6 +22,10 @@ typedef struct {
     // position bird in the middle of the screen
     int x;
     int y;
+    // Y velocity; gravity
+    int dy;
 } Bird;
 
-void DrawBird(Bird bird);
+void InitBird(Bird *bird);
+void UpdateBird(float dt, Bird *bird);
+void DrawBird(Bird *bird);
