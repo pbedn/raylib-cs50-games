@@ -23,7 +23,7 @@ typedef struct {
     int x;
     int y;
     // Y velocity; gravity
-    int dy;
+    float dy;
 } Bird;
 
 void InitBird(Bird *bird);

@@ -113,6 +113,11 @@ void UpdateBird(float dt, Bird *bird)
 {
     // apply gravity to velocity
     bird->dy += GRAVITY * dt;
+    // add a sudden burst of negative gravity if we hit space
+    if (IsKeyPressed(KEY_SPACE))
+    {
+        bird->dy = -5;
+    }
     // apply current velocity to Y position
     bird->y += bird->dy;
 }
