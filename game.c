@@ -23,6 +23,12 @@ Bird bird;
 
 #define GRAVITY 20
 
+Pipe pipe;
+Pipe pipes[10] = {0};
+int pipesCount = 0;
+Texture2D pipeTexture;
+float spawnTimer = 0.0f;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -37,6 +43,7 @@ int main(void) {
 
     background = LoadTexture("res/background.png");
     ground = LoadTexture("res/ground.png");
+    pipeTexture = LoadTexture("res/pipe.png");
 
     InitBird(&bird);
 
@@ -85,7 +92,33 @@ void GameLogic(float dt)
     groundScroll = fmodf((groundScroll + GROUND_SCROLL_SPEED * dt), gameScreenWidth);
     // printf("groundScroll: %f\n", groundScroll);
 
+    spawnTimer = spawnTimer + dt;
+    if (spawnTimer > 2)
+    {
+        if (pipesCount < 10) {
+            pipes[pipesCount++] = InitPipe();
+            printf("Added new pipe!\n");
+        }
+        spawnTimer = 0;
+    }
+
     UpdateBird(dt, &bird);
+
+    for (int i = 0; i < pipesCount; ++i)
+    {
+        UpdatePipe(dt, &pipes[i]);
+        if (pipes[i].x < -pipes[i].width)
+        {
+            for (int j = i; i < pipesCount - 1; i++) {
+                pipes[i] = pipes[i + 1];
+            }
+            pipesCount--;
+        }
+    }
+    printf("After removal:\n");
+    for (int i = 0; i < pipesCount; i++) {
+        printf("Pipe id: %d\n", i);
+    }
 }
 
 void DrawGame()
@@ -97,6 +130,13 @@ void DrawGame()
     DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
 
     DrawBird(&bird);
+
+    // render all the pipes in scene
+    for (int i = 0; i < pipesCount; ++i)
+    {
+        DrawPipe(&pipes[i]);
+    }
+    
 }
 
 void InitBird(Bird *bird)
@@ -125,4 +165,25 @@ void UpdateBird(float dt, Bird *bird)
 void DrawBird(Bird *bird)
 {
     DrawTexture(bird->image, bird->x, bird->y, WHITE);
+}
+
+Pipe InitPipe()
+{
+    Pipe newPipe;
+    newPipe.image = pipeTexture;
+    newPipe.scroll = -60;
+    newPipe.x = gameScreenWidth;
+    newPipe.y = GetRandomValue(gameScreenHeight / 4, gameScreenHeight - 10);
+    newPipe.width = 70;
+    return newPipe;
+}
+
+void UpdatePipe(float dt, Pipe *pipe)
+{
+    pipe->x += pipe->scroll * dt;
+}
+
+void DrawPipe(Pipe *pipe)
+{
+    DrawTexture(pipe->image, pipe->x, pipe->y, WHITE);
 }

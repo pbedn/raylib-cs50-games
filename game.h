@@ -29,3 +29,15 @@ typedef struct {
 void InitBird(Bird *bird);
 void UpdateBird(float dt, Bird *bird);
 void DrawBird(Bird *bird);
+
+typedef struct {
+    Texture2D image;
+    int scroll;
+    int width;
+    float x;
+    float y;
+} Pipe;
+
+Pipe InitPipe();
+void UpdatePipe(float dt, Pipe *pipe);
+void DrawPipe(Pipe *pipe);
