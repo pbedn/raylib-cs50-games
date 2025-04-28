@@ -34,10 +34,12 @@ typedef struct {
     Texture2D image;
     int scroll;
     int width;
+    int height;
     float x;
     float y;
+    int flipped;
 } Pipe;
 
-Pipe InitPipe();
+Pipe InitPipe(int y, int flipped);
 void UpdatePipe(float dt, Pipe *pipe);
 void DrawPipe(Pipe *pipe);
