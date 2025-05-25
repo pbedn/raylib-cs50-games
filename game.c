@@ -48,6 +48,10 @@ Font smallFont;
 Font mediumFont;
 Font flappyFont;
 
+float COUNTDOWN_TIME = 0.75f;
+int count;
+float timer;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -70,6 +74,8 @@ int main(void) {
     srand(time(NULL));
     lastY = -PIPE_HEIGHT + rand() % 80 + 20;
     score = 0;
+    count = 0;
+    timer = 0.0f;
 
     InitBird(&bird);
 
@@ -103,7 +109,7 @@ void UpdateDrawFrame(RenderTexture2D target)
         case STATE_TITLE:
             ScrollingBackground(deltaTime);
             if (IsKeyPressed(KEY_ENTER)) {
-                currentState = STATE_PLAY;
+                currentState = STATE_COUNTDOWN;
                 ResetGame();
             }
             break;
@@ -113,10 +119,20 @@ void UpdateDrawFrame(RenderTexture2D target)
         case STATE_SCORE:
             ScrollingBackground(deltaTime);
             if (IsKeyPressed(KEY_ENTER)) {
-                currentState = STATE_PLAY;
+                currentState = STATE_COUNTDOWN;
                 ResetGame();
             }
             break;
+        case STATE_COUNTDOWN:
+            ScrollingBackground(deltaTime);
+            timer += deltaTime;
+            if (timer > COUNTDOWN_TIME) {
+                timer = fmod(timer, COUNTDOWN_TIME);
+                count--;
+
+                if (count == 0)
+                    currentState = STATE_PLAY;
+            }
     }
 
     BeginTextureMode(target);
@@ -126,6 +142,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawGame();
         else if (currentState == STATE_SCORE)
             DrawScore();
+        else if (currentState == STATE_COUNTDOWN)
+            DrawCountdown();
     EndTextureMode();
 
     BeginDrawing();
@@ -165,7 +183,6 @@ void GameLogic(float dt)
         }
         spawnTimer = 0;
     }
-
 
     UpdateBird(dt, &bird);
 
@@ -260,6 +277,22 @@ void DrawScore()
     DrawTextEx(mediumFont, "Press Enter to Play Again!", promptPos, 14, 0, WHITE);
 }
 
+void DrawCountdown()
+{
+    ClearBackground(SKYBLUE);
+    DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
+    DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
+
+    char buffer[8];
+    sprintf(buffer, "%d", count);
+    Vector2 countSize = MeasureTextEx(flappyFont, buffer, 28, 0);
+    Vector2 countPos = {
+        (gameScreenWidth - countSize.x) / 2,
+        120
+    };
+    DrawTextEx(flappyFont, buffer, countPos, 28, 0, WHITE);
+}
+
 void DrawGame()
 {
     ClearBackground(SKYBLUE);
@@ -294,7 +327,10 @@ void ResetGame(void)
     pipesCount = 0;
     score = 0;
     lastY = -PIPE_HEIGHT + rand() % 80 + 20;
+    UnloadTexture(bird.image); // could be optimized
     InitBird(&bird);
+    count = 3;
+    timer = 0.0f;
 }
 
 void InitBird(Bird *bird)

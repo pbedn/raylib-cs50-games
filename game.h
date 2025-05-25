@@ -18,15 +18,16 @@ void DrawTitle(void);
 void ScrollingBackground(float deltaTime);
 void ResetGame(void);
 void DrawScore(void);
+void DrawCountdown(void);
 
 typedef enum {
     STATE_TITLE,
     STATE_PLAY,
-    STATE_SCORE
+    STATE_SCORE,
+    STATE_COUNTDOWN
 } GameState;
 
 extern GameState currentState;
-extern int countdownTime;
 
 typedef struct {
     Texture2D image;
