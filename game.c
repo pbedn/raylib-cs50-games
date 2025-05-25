@@ -43,6 +43,11 @@ int lastY;
 
 bool scrolling = true;
 
+GameState currentState = STATE_TITLE;
+Font smallFont;
+Font mediumFont;
+Font flappyFont;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -50,6 +55,10 @@ int main(void) {
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Flappy Bird");
 
+    // Retro Fonts
+    smallFont = LoadFont("res/font.ttf");
+    mediumFont = LoadFontEx("res/flappy.ttf", 14, 0, 0);
+    flappyFont = LoadFontEx("res/flappy.ttf", 28, 0, 0);
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
@@ -75,6 +84,9 @@ int main(void) {
     UnloadTexture(ground);
     UnloadTexture(pipeTexture);
     UnloadTexture(bird.image);
+    UnloadFont(smallFont);
+    UnloadFont(mediumFont);
+    UnloadFont(flappyFont);
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
@@ -86,10 +98,22 @@ void UpdateDrawFrame(RenderTexture2D target)
     // Compute required framebuffer scaling
     float scale = MIN((float)GetScreenWidth()/gameScreenWidth, (float)GetScreenHeight()/gameScreenHeight);
 
-    if (scrolling) GameLogic(deltaTime);
+    switch (currentState) {
+        case STATE_TITLE:
+            ScrollingBackground(deltaTime);
+            if (IsKeyPressed(KEY_ENTER))
+                currentState = STATE_PLAY;
+            break;
+        case STATE_PLAY:
+            GameLogic(deltaTime);
+            break;
+    }
 
     BeginTextureMode(target);
-        DrawGame();
+        if (currentState == STATE_TITLE)
+            DrawTitle();
+        else if (currentState == STATE_PLAY)
+            DrawGame();
     EndTextureMode();
 
     BeginDrawing();
@@ -102,13 +126,17 @@ void UpdateDrawFrame(RenderTexture2D target)
     EndDrawing();
 }
 
-void GameLogic(float dt)
+void ScrollingBackground(float dt)
 {
     // scroll background by preset speed * dt, looping back to 0 after the looping point
     backgroundScroll = fmodf((backgroundScroll + BACKGROUND_SCROLL_SPEED * dt), BACKGROUND_LOOPING_POINT);
 
     // scroll ground by preset speed * dt, looping back to 0 after the screen width passes
     groundScroll = fmodf((groundScroll + GROUND_SCROLL_SPEED * dt), GROUND_LOOPING_POINT);
+}
+void GameLogic(float dt)
+{
+    ScrollingBackground(dt);
 
     spawnTimer = spawnTimer + dt;
     if (spawnTimer > 2)
@@ -129,6 +157,7 @@ void GameLogic(float dt)
 
     UpdateBird(dt, &bird);
 
+    // collision between bird and pipes
     for (int i = 0; i < pipesCount; ++i)
     {
         UpdatePipe(dt, &pipes[i][0]);
@@ -136,7 +165,8 @@ void GameLogic(float dt)
 
         if (CollideBird(&bird, &pipes[i][0]) || CollideBird(&bird, &pipes[i][1]))
         {
-            scrolling = false;
+            currentState = STATE_TITLE;
+            ResetGame();
         }
 
         if (pipes[i][0].x < -pipes[i][0].width)
@@ -149,6 +179,40 @@ void GameLogic(float dt)
             i--;
         }
     }
+
+    // reset if we get to the ground
+    if (bird.y > gameScreenHeight - ground.height)
+    {
+        currentState = STATE_TITLE;
+        ResetGame();
+    }
+}
+
+void DrawTitle()
+{
+    // love.graphics.setFont(flappyFont)
+    // love.graphics.printf('Fifty Bird', 0, 64, VIRTUAL_WIDTH, 'center')
+
+    // love.graphics.setFont(mediumFont)
+    // love.graphics.printf('Press Enter', 0, 100, VIRTUAL_WIDTH, 'center')
+
+    ClearBackground(SKYBLUE);
+    DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
+    DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
+
+    Vector2 titleSize = MeasureTextEx(flappyFont, "Flappy Bird", 28, 0);
+    Vector2 titlePos = {
+        (gameScreenWidth - titleSize.x) / 2,
+        64
+    };
+    DrawTextEx(flappyFont, "Flappy Bird", titlePos, 28, 0, WHITE);
+
+    Vector2 promptSize = MeasureTextEx(mediumFont, "Press Enter", 14, 0);
+    Vector2 promptPos = {
+        (gameScreenWidth - promptSize.x) / 2,
+        100
+    };
+    DrawTextEx(mediumFont, "Press Enter", promptPos, 14, 0, WHITE);
 }
 
 void DrawGame()
@@ -169,6 +233,16 @@ void DrawGame()
     DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
     DrawBird(&bird);
     
+}
+
+void ResetGame(void)
+{
+    backgroundScroll = 0.0f;
+    groundScroll = 0.0f;
+    spawnTimer = 0.0f;
+    pipesCount = 0;
+    lastY = -PIPE_HEIGHT + rand() % 80 + 20;
+    InitBird(&bird);
 }
 
 void InitBird(Bird *bird)

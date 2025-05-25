@@ -14,6 +14,19 @@
 void UpdateDrawFrame(RenderTexture2D target);
 void GameLogic(float deltaTime);
 void DrawGame(void);
+void DrawTitle(void);
+void ScrollingBackground(float deltaTime);
+void ResetGame();
+
+typedef enum {
+    STATE_TITLE,
+    STATE_COUNTDOWN,
+    STATE_PLAY,
+    STATE_SCORE
+} GameState;
+
+extern GameState currentState;
+extern int countdownTime;
 
 typedef struct {
     Texture2D image;
