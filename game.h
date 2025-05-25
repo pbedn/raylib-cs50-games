@@ -40,6 +40,7 @@ typedef struct {
     int flipped;
 } Pipe;
 
+bool CollideBird(Bird *bird, Pipe *pipe);
 Pipe InitPipe(int y, int flipped);
 void UpdatePipe(float dt, Pipe *pipe);
 void DrawPipe(Pipe *pipe);

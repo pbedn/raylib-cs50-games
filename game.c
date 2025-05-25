@@ -1,4 +1,6 @@
+#include <time.h>
 #include "game.h"
+#include "raylib.h"
 
 #define MAX(a, b) ((a)>(b)? (a) : (b))
 #define MIN(a, b) ((a)<(b)? (a) : (b))
@@ -39,6 +41,8 @@ float spawnTimer = 0.0f;
 
 int lastY;
 
+bool scrolling = true;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -54,6 +58,7 @@ int main(void) {
     background = LoadTexture("res/background.png");
     ground = LoadTexture("res/ground.png");
     pipeTexture = LoadTexture("res/pipe.png");
+    srand(time(NULL));
     lastY = -PIPE_HEIGHT + rand() % 80 + 20;
 
     InitBird(&bird);
@@ -66,6 +71,10 @@ int main(void) {
     }
 
     /* De-Initialization: Clean up resources and close the window. */
+    UnloadTexture(background);
+    UnloadTexture(ground);
+    UnloadTexture(pipeTexture);
+    UnloadTexture(bird.image);
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
@@ -77,7 +86,7 @@ void UpdateDrawFrame(RenderTexture2D target)
     // Compute required framebuffer scaling
     float scale = MIN((float)GetScreenWidth()/gameScreenWidth, (float)GetScreenHeight()/gameScreenHeight);
 
-    GameLogic(deltaTime);
+    if (scrolling) GameLogic(deltaTime);
 
     BeginTextureMode(target);
         DrawGame();
@@ -124,6 +133,12 @@ void GameLogic(float dt)
     {
         UpdatePipe(dt, &pipes[i][0]);
         UpdatePipe(dt, &pipes[i][1]);
+
+        if (CollideBird(&bird, &pipes[i][0]) || CollideBird(&bird, &pipes[i][1]))
+        {
+            scrolling = false;
+        }
+
         if (pipes[i][0].x < -pipes[i][0].width)
         {
             for (int j = i; j < pipesCount - 1; j++) {
@@ -150,6 +165,7 @@ void DrawGame()
         DrawPipe(&pipes[i][0]);
         DrawPipe(&pipes[i][1]);
     }
+
     DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
     DrawBird(&bird);
     
@@ -176,6 +192,18 @@ void UpdateBird(float dt, Bird *bird)
     }
     // apply current velocity to Y position
     bird->y += bird->dy;
+}
+
+bool CollideBird(Bird *bird, Pipe *pipe)
+{
+    if (((bird->x + 2) + (bird->width - 4)) >= pipe->x &&
+        ((bird->x + 2) <= (pipe->x + PIPE_WIDTH)) &&
+        ((bird->y + 2) + (bird->height - 4)) >= pipe->y &&
+        ((bird->y + 2) <= (pipe->y + PIPE_HEIGHT)))
+    {
+        return true;
+    }
+    return false;
 }
 
 void DrawBird(Bird *bird)
