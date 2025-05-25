@@ -16,11 +16,11 @@ void GameLogic(float deltaTime);
 void DrawGame(void);
 void DrawTitle(void);
 void ScrollingBackground(float deltaTime);
-void ResetGame();
+void ResetGame(void);
+void DrawScore(void);
 
 typedef enum {
     STATE_TITLE,
-    STATE_COUNTDOWN,
     STATE_PLAY,
     STATE_SCORE
 } GameState;
@@ -51,6 +51,7 @@ typedef struct {
     float x;
     float y;
     int flipped;
+    bool scored;
 } Pipe;
 
 bool CollideBird(Bird *bird, Pipe *pipe);

@@ -31,7 +31,7 @@ Bird bird;
 #define PIPE_SPEED 60
 #define PIPE_HEIGHT 288
 #define PIPE_WIDTH 70
-#define PIPE_GAP_HEIGHT 90
+#define PIPE_GAP_HEIGHT 100
 
 Pipe pipe;
 Pipe pipes[10][2] = {0};
@@ -41,7 +41,7 @@ float spawnTimer = 0.0f;
 
 int lastY;
 
-bool scrolling = true;
+int score;
 
 GameState currentState = STATE_TITLE;
 Font smallFont;
@@ -69,6 +69,7 @@ int main(void) {
     pipeTexture = LoadTexture("res/pipe.png");
     srand(time(NULL));
     lastY = -PIPE_HEIGHT + rand() % 80 + 20;
+    score = 0;
 
     InitBird(&bird);
 
@@ -101,11 +102,20 @@ void UpdateDrawFrame(RenderTexture2D target)
     switch (currentState) {
         case STATE_TITLE:
             ScrollingBackground(deltaTime);
-            if (IsKeyPressed(KEY_ENTER))
+            if (IsKeyPressed(KEY_ENTER)) {
                 currentState = STATE_PLAY;
+                ResetGame();
+            }
             break;
         case STATE_PLAY:
             GameLogic(deltaTime);
+            break;
+        case STATE_SCORE:
+            ScrollingBackground(deltaTime);
+            if (IsKeyPressed(KEY_ENTER)) {
+                currentState = STATE_PLAY;
+                ResetGame();
+            }
             break;
     }
 
@@ -114,6 +124,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawTitle();
         else if (currentState == STATE_PLAY)
             DrawGame();
+        else if (currentState == STATE_SCORE)
+            DrawScore();
     EndTextureMode();
 
     BeginDrawing();
@@ -166,7 +178,12 @@ void GameLogic(float dt)
         if (CollideBird(&bird, &pipes[i][0]) || CollideBird(&bird, &pipes[i][1]))
         {
             currentState = STATE_TITLE;
-            ResetGame();
+            // ResetGame();
+        }
+
+        if (not pipes[i][0].scored and ((pipes[i][0].x + PIPE_WIDTH) < bird.x)) {
+            score++;
+            pipes[i][0].scored = true;
         }
 
         if (pipes[i][0].x < -pipes[i][0].width)
@@ -183,8 +200,8 @@ void GameLogic(float dt)
     // reset if we get to the ground
     if (bird.y > gameScreenHeight - ground.height)
     {
-        currentState = STATE_TITLE;
-        ResetGame();
+        currentState = STATE_SCORE;
+        // ResetGame();
     }
 }
 
@@ -215,13 +232,44 @@ void DrawTitle()
     DrawTextEx(mediumFont, "Press Enter", promptPos, 14, 0, WHITE);
 }
 
+void DrawScore()
+{
+    ClearBackground(SKYBLUE);
+    DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
+    DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
+
+    Vector2 scoreSize = MeasureTextEx(flappyFont, "Oof! You lost!", 28, 0);
+    Vector2 scorePos = {
+        (gameScreenWidth - scoreSize.x) / 2,
+        64
+    };
+    DrawTextEx(flappyFont, "Oof! You lost!", scorePos, 28, 0, WHITE);
+
+    Vector2 score1Size = MeasureTextEx(mediumFont, "Score:  ", 14, 0);
+    Vector2 score1Pos = {
+        (gameScreenWidth - score1Size.x) / 2,
+        100
+    };
+    DrawTextEx(mediumFont, TextFormat("Score: %d", score), score1Pos, 14, 0, WHITE);
+
+    Vector2 promptSize = MeasureTextEx(mediumFont, "Press Enter to Play Again!", 14, 0);
+    Vector2 promptPos = {
+        (gameScreenWidth - promptSize.x) / 2,
+        160
+    };
+    DrawTextEx(mediumFont, "Press Enter to Play Again!", promptPos, 14, 0, WHITE);
+}
+
 void DrawGame()
 {
     ClearBackground(SKYBLUE);
     DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
 
-    DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
-    DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
+    // debug scrolling
+    // DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
+    // DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
+
+    
 
     // render all the pipes in scene
     for (int i = 0; i < pipesCount; ++i)
@@ -231,16 +279,20 @@ void DrawGame()
     }
 
     DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
+
+    DrawTextEx(flappyFont, TextFormat("Score: %d", score), (Vector2){10, 10}, 28, 0, WHITE);
+
     DrawBird(&bird);
     
 }
 
 void ResetGame(void)
 {
-    backgroundScroll = 0.0f;
-    groundScroll = 0.0f;
+    // backgroundScroll = 0.0f;
+    // groundScroll = 0.0f;
     spawnTimer = 0.0f;
     pipesCount = 0;
+    score = 0;
     lastY = -PIPE_HEIGHT + rand() % 80 + 20;
     InitBird(&bird);
 }
