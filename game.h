@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <unistd.h>
 #include <math.h>
+#include <time.h>
 
 #include "raylib.h"
 #include "raymath.h"

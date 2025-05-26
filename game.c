@@ -1,4 +1,3 @@
-#include <time.h>
 #include "game.h"
 #include "raylib.h"
 
@@ -31,13 +30,14 @@ Bird bird;
 #define PIPE_SPEED 60
 #define PIPE_HEIGHT 288
 #define PIPE_WIDTH 70
-#define PIPE_GAP_HEIGHT 100
 
 Pipe pipe;
 Pipe pipes[10][2] = {0};
 int pipesCount = 0;
 Texture2D pipeTexture;
 float spawnTimer = 0.0f;
+float pipeSpawnInterval = 2.0f;
+int pipeGapHeight;
 
 int lastY;
 
@@ -191,19 +191,21 @@ void GameLogic(float dt)
     ScrollingBackground(dt);
 
     spawnTimer = spawnTimer + dt;
-    if (spawnTimer > 2)
+    if (spawnTimer > pipeSpawnInterval)
     {
         if (pipesCount < 10) {
+            pipeGapHeight = GetRandomValue(80, 120);
             // Ensure the top pipe is placed correctly
-            int topPipeY = MAX(-PIPE_HEIGHT + 10, MIN(lastY + GetRandomValue(-20, 20), gameScreenHeight - PIPE_GAP_HEIGHT - PIPE_HEIGHT));
+            int topPipeY = MAX(-PIPE_HEIGHT + 10, MIN(lastY + GetRandomValue(-20, 20), gameScreenHeight - pipeGapHeight - PIPE_HEIGHT));
             lastY = topPipeY;
             // Create top pipe at topPipeY
             pipes[pipesCount][0] = InitPipe(topPipeY, 1);
             // Create bottom pipe at the position below top pipe, plus gap
-            pipes[pipesCount][1] = InitPipe(topPipeY + PIPE_HEIGHT + PIPE_GAP_HEIGHT, 0);
+            pipes[pipesCount][1] = InitPipe(topPipeY + PIPE_HEIGHT + pipeGapHeight, 0);
             pipesCount++;
         }
         spawnTimer = 0;
+        pipeSpawnInterval = GetRandomValue(15, 25) / 10.0f;
     }
 
     UpdateBird(dt, &bird);
