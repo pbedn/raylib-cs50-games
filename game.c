@@ -195,13 +195,16 @@ void UpdateDrawFrame(RenderTexture2D target)
     BeginTextureMode(target);
         if (isPaused)
         {
-            float scale = 0.1f; // Adjust size to 50%
+            // DrawRectangle(0, 0, gameScreenWidth, gameScreenHeight, Fade(BLACK, 0.6f));
+
+            float scale = 0.09f; // Adjust size to 50%
             int iconWidth = (int)(pauseIcon.width * scale);
             int iconHeight = (int)(pauseIcon.height * scale);
             Vector2 position = {
                 (gameScreenWidth - iconWidth) / 2.0f,
                 (gameScreenHeight - iconHeight) / 2.0f
             };
+
             DrawTextureEx(pauseIcon, position, 0.0f, scale, WHITE);
         }
         else if (currentState == STATE_TITLE)
@@ -215,7 +218,7 @@ void UpdateDrawFrame(RenderTexture2D target)
     EndTextureMode();
 
     BeginDrawing();
-        ClearBackground(BLACK);     // Clear screen background
+        ClearBackground(WHITE);     // Clear screen background
 
         // Draw render texture to screen, properly scaled
         DrawTexturePro(target.texture, (Rectangle){ 0.0f, 0.0f, (float)target.texture.width, (float)-target.texture.height },
