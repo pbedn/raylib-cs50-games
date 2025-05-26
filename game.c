@@ -52,6 +52,12 @@ float COUNTDOWN_TIME = 0.75f;
 int count;
 float timer;
 
+Sound jumpSound;
+Sound scoreSound;
+Sound explosionSound;
+Sound hurtSound;
+Music music;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -59,10 +65,23 @@ int main(void) {
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Flappy Bird");
 
+    InitAudioDevice();
+
     // Retro Fonts
     smallFont = LoadFont("res/font.ttf");
     mediumFont = LoadFontEx("res/flappy.ttf", 14, 0, 0);
     flappyFont = LoadFontEx("res/flappy.ttf", 28, 0, 0);
+
+    // Sounds / Music
+    jumpSound = LoadSound("res/jump.wav");
+    scoreSound = LoadSound("res/score.wav");
+    explosionSound = LoadSound("res/explosion.wav");
+    hurtSound = LoadSound("res/hurt.wav");
+    music = LoadMusicStream("res/marios_way.mp3");
+
+    // Start music
+    music.looping = true;
+    PlayMusicStream(music);
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
@@ -94,6 +113,7 @@ int main(void) {
     UnloadFont(smallFont);
     UnloadFont(mediumFont);
     UnloadFont(flappyFont);
+    UnloadMusicStream(music);
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
@@ -104,6 +124,8 @@ void UpdateDrawFrame(RenderTexture2D target)
     float deltaTime = GetFrameTime();
     // Compute required framebuffer scaling
     float scale = MIN((float)GetScreenWidth()/gameScreenWidth, (float)GetScreenHeight()/gameScreenHeight);
+
+    UpdateMusicStream(music);
 
     switch (currentState) {
         case STATE_TITLE:
@@ -194,13 +216,16 @@ void GameLogic(float dt)
 
         if (CollideBird(&bird, &pipes[i][0]) || CollideBird(&bird, &pipes[i][1]))
         {
-            currentState = STATE_TITLE;
+            currentState = STATE_SCORE;
+            PlaySound(explosionSound);
+            PlaySound(hurtSound);
             // ResetGame();
         }
 
         if (not pipes[i][0].scored and ((pipes[i][0].x + PIPE_WIDTH) < bird.x)) {
             score++;
             pipes[i][0].scored = true;
+            PlaySound(scoreSound);
         }
 
         if (pipes[i][0].x < -pipes[i][0].width)
@@ -218,18 +243,14 @@ void GameLogic(float dt)
     if (bird.y > gameScreenHeight - ground.height)
     {
         currentState = STATE_SCORE;
+        PlaySound(explosionSound);
+        PlaySound(hurtSound);
         // ResetGame();
     }
 }
 
 void DrawTitle()
 {
-    // love.graphics.setFont(flappyFont)
-    // love.graphics.printf('Fifty Bird', 0, 64, VIRTUAL_WIDTH, 'center')
-
-    // love.graphics.setFont(mediumFont)
-    // love.graphics.printf('Press Enter', 0, 100, VIRTUAL_WIDTH, 'center')
-
     ClearBackground(SKYBLUE);
     DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
     DrawTexture(ground, -(int)groundScroll, gameScreenHeight - 16, WHITE);
@@ -298,12 +319,6 @@ void DrawGame()
     ClearBackground(SKYBLUE);
     DrawTexture(background, -(int)backgroundScroll, 0, WHITE);
 
-    // debug scrolling
-    // DrawText(TextFormat("Background Scroll: %2.1f", backgroundScroll), 10, 10, 10, BLACK);
-    // DrawText(TextFormat("Ground Scroll: %2.1f", groundScroll), 10, 30, 10, BLACK);
-
-    
-
     // render all the pipes in scene
     for (int i = 0; i < pipesCount; ++i)
     {
@@ -351,6 +366,7 @@ void UpdateBird(float dt, Bird *bird)
     if (IsKeyPressed(KEY_SPACE))
     {
         bird->dy = -5;
+        PlaySound(jumpSound);
     }
     // apply current velocity to Y position
     bird->y += bird->dy;
@@ -390,14 +406,6 @@ void UpdatePipe(float dt, Pipe *pipe)
 {
     pipe->x += pipe->scroll * dt;
 }
-
-// void DrawPipe(Pipe *pipe)
-// {
-//     if (pipe->flipped)
-//         DrawTextureRec(pipe->image, (Rectangle){0, 0, pipe->width, -pipe->height}, (Vector2){pipe->x, pipe->y}, WHITE);
-//     else
-//         DrawTexture(pipe->image, pipe->x, pipe->y, WHITE);
-// }
 
 void DrawPipe(Pipe *pipe)
 {
