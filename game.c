@@ -10,6 +10,10 @@ const int screenHeight = 720;
 int gameScreenWidth = 512;
 int gameScreenHeight = 288;
 
+bool isPaused = false;
+Sound pauseSound;
+Texture2D pauseIcon;
+
 Texture2D background;
 Texture2D ground;
 float backgroundScroll = 0.0f;
@@ -70,6 +74,10 @@ int main(void) {
     InitWindow(screenWidth, screenHeight, "Flappy Bird");
 
     InitAudioDevice();
+
+    // Pause
+    pauseSound = LoadSound("res/pause.mp3");
+    pauseIcon = LoadTexture("res/pause.png");
 
     // Retro Fonts
     smallFont = LoadFont("res/font.ttf");
@@ -138,44 +146,65 @@ int main(void) {
 
 void UpdateDrawFrame(RenderTexture2D target)
 {
+    if (IsKeyPressed(KEY_P)) {
+        isPaused = !isPaused;
+        PlaySound(pauseSound);
+
+        if (isPaused) PauseMusicStream(music);
+        else ResumeMusicStream(music);
+    }
+
     float deltaTime = GetFrameTime();
     // Compute required framebuffer scaling
     float scale = MIN((float)GetScreenWidth()/gameScreenWidth, (float)GetScreenHeight()/gameScreenHeight);
 
     UpdateMusicStream(music);
 
-    switch (currentState) {
-        case STATE_TITLE:
-            ScrollingBackground(deltaTime);
-            if (IsKeyPressed(KEY_ENTER)) {
-                currentState = STATE_COUNTDOWN;
-                ResetGame();
-            }
-            break;
-        case STATE_PLAY:
-            GameLogic(deltaTime);
-            break;
-        case STATE_SCORE:
-            ScrollingBackground(deltaTime);
-            if (IsKeyPressed(KEY_ENTER)) {
-                currentState = STATE_COUNTDOWN;
-                ResetGame();
-            }
-            break;
-        case STATE_COUNTDOWN:
-            ScrollingBackground(deltaTime);
-            timer += deltaTime;
-            if (timer > COUNTDOWN_TIME) {
-                timer = fmod(timer, COUNTDOWN_TIME);
-                count--;
+    if (!isPaused) {
+        switch (currentState) {
+            case STATE_TITLE:
+                ScrollingBackground(deltaTime);
+                if (IsKeyPressed(KEY_ENTER)) {
+                    currentState = STATE_COUNTDOWN;
+                    ResetGame();
+                }
+                break;
+            case STATE_PLAY:
+                GameLogic(deltaTime);
+                break;
+            case STATE_SCORE:
+                ScrollingBackground(deltaTime);
+                if (IsKeyPressed(KEY_ENTER)) {
+                    currentState = STATE_COUNTDOWN;
+                    ResetGame();
+                }
+                break;
+            case STATE_COUNTDOWN:
+                ScrollingBackground(deltaTime);
+                timer += deltaTime;
+                if (timer > COUNTDOWN_TIME) {
+                    timer = fmod(timer, COUNTDOWN_TIME);
+                    count--;
 
-                if (count == 0)
-                    currentState = STATE_PLAY;
-            }
+                    if (count == 0)
+                        currentState = STATE_PLAY;
+                }
+        }
     }
 
     BeginTextureMode(target);
-        if (currentState == STATE_TITLE)
+        if (isPaused)
+        {
+            float scale = 0.1f; // Adjust size to 50%
+            int iconWidth = (int)(pauseIcon.width * scale);
+            int iconHeight = (int)(pauseIcon.height * scale);
+            Vector2 position = {
+                (gameScreenWidth - iconWidth) / 2.0f,
+                (gameScreenHeight - iconHeight) / 2.0f
+            };
+            DrawTextureEx(pauseIcon, position, 0.0f, scale, WHITE);
+        }
+        else if (currentState == STATE_TITLE)
             DrawTitle();
         else if (currentState == STATE_PLAY)
             DrawGame();
