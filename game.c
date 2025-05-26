@@ -58,6 +58,10 @@ Sound explosionSound;
 Sound hurtSound;
 Music music;
 
+Texture2D medalBronze;
+Texture2D medalSilver;
+Texture2D medalGold;
+
 int main(void) {
     SetTraceLogLevel(LOG_ALL);
 
@@ -82,6 +86,11 @@ int main(void) {
     // Start music
     music.looping = true;
     PlayMusicStream(music);
+
+    // Medals
+    medalBronze = LoadTexture("res/flat_medal3.png");
+    medalSilver = LoadTexture("res/flat_medal2.png");
+    medalGold   = LoadTexture("res/flat_medal1.png");
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
@@ -113,7 +122,15 @@ int main(void) {
     UnloadFont(smallFont);
     UnloadFont(mediumFont);
     UnloadFont(flappyFont);
+    UnloadSound(jumpSound);
+    UnloadSound(scoreSound);
+    UnloadSound(explosionSound);
+    UnloadSound(hurtSound);
     UnloadMusicStream(music);
+    UnloadTexture(medalBronze);
+    UnloadTexture(medalSilver);
+    UnloadTexture(medalGold);
+
     CloseWindow(); // Close window and OpenGL context
 
     return 0;
@@ -298,6 +315,27 @@ void DrawScore()
         160
     };
     DrawTextEx(mediumFont, "Press Enter to Play Again!", promptPos, 14, 0, WHITE);
+
+    Texture2D medalToDraw;
+    bool showMedal = false;
+
+    if (score >= 9) {
+        medalToDraw = medalGold;
+        showMedal = true;
+    } else if (score >= 6) {
+        medalToDraw = medalSilver;
+        showMedal = true;
+    } else if (score >= 3) {
+        medalToDraw = medalBronze;
+        showMedal = true;
+    }
+
+    if (showMedal) {
+        int medalX = (gameScreenWidth - medalToDraw.width) / 2;
+        int medalY = 180;  // below the score text
+        DrawTexture(medalToDraw, medalX, medalY, WHITE);
+    }
+
 }
 
 void DrawCountdown()
