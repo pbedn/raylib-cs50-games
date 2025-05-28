@@ -5,14 +5,22 @@
 const int screenWidth = 1280;
 const int screenHeight = 720;
 
-int gameScreenWidth = 512;
-int gameScreenHeight = 288;
+int gameScreenWidth = 432;
+int gameScreenHeight = 243;
 
 bool isPaused = false;
 Sound pauseSound;
 Texture2D pauseTexture;
 
 GameState currentState = STATE_TITLE;
+
+typedef struct {
+    int highlighted;  // 1 for "START", 2 for "HIGH SCORES"
+} StartState;
+
+StartState state;
+
+Color blueColor = {103, 255, 255, 255};
 
 // Resources
 Texture2D backgroundTexture;
@@ -85,6 +93,8 @@ int main(void) {
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  // Texture scale filter to use
+
+    StartState state = { .highlighted = 1 };
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -192,7 +202,12 @@ void UpdateDrawFrame(RenderTexture2D target)
 
 void GameLogic(float dt)
 {
-    // logic
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
+    {
+        // Toggle the highlighted option (if 1, switch to 2; otherwise, switch to 1)
+        state.highlighted = (state.highlighted == 1) ? 2 : 1;
+        PlaySound(paddleHitSound);
+    }
 }
 
 void DrawFPSCustom()
@@ -201,10 +216,47 @@ void DrawFPSCustom()
     sprintf(fpsText, "%d FPS", GetFPS());
     DrawTextEx(smallFont, fpsText, (Vector2){5, 5}, 8, 1, GREEN);
 }
+
 void DrawTitle()
 {
     ClearBackground(BLACK);
+    Rectangle src = { 0.0f, 0.0f, (float)backgroundTexture.width, (float)backgroundTexture.height };
+    Rectangle dst = { 0.0f, 0.0f, (float)gameScreenWidth + 1, (float)gameScreenHeight + 1 };
+    DrawTexturePro(backgroundTexture, src, dst, (Vector2){0, 0}, 0.0f, WHITE);
+
+    static int highlighted = 1;  // 1 = "START", 2 = "HIGH SCORES"
+
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN)) {
+        highlighted = (highlighted == 1) ? 2 : 1;
+        PlaySound(paddleHitSound);
+    }
+
+    // Title
+    const char *title = "BREAKOUT";
+    Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
+    float titleX = (gameScreenWidth - titleSize.x) / 2;
+    float titleY = gameScreenHeight / 3;
+    DrawTextEx(largeFont, title, (Vector2){titleX, titleY}, 32, 1, WHITE);
+
+    // Option 1: START
+    const char *startText = "START";
+    Vector2 startSize = MeasureTextEx(mediumFont, startText, 16, 1);
+    float startX = (gameScreenWidth - startSize.x) / 2;
+    float startY = gameScreenHeight / 2 + 20;
+
+    Color startColor = (highlighted == 1) ? (Color){103, 255, 255, 255} : WHITE;
+    DrawTextEx(mediumFont, startText, (Vector2){startX, startY}, 16, 1, startColor);
+
+    // Option 2: HIGH SCORES
+    const char *scoreText = "HIGH SCORES";
+    Vector2 scoreSize = MeasureTextEx(mediumFont, scoreText, 16, 1);
+    float scoreX = (gameScreenWidth - scoreSize.x) / 2;
+    float scoreY = startY + 20;
+
+    Color scoreColor = (highlighted == 2) ? (Color){103, 255, 255, 255} : WHITE;
+    DrawTextEx(mediumFont, scoreText, (Vector2){scoreX, scoreY}, 16, 1, scoreColor);
 }
+
 
 void DrawGame()
 {
