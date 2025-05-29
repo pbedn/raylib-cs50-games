@@ -169,7 +169,7 @@ void UpdateDrawFrame(RenderTexture2D target)
     }
 
     BeginTextureMode(target);
-        DrawFPSCustom();
+        ClearBackground(WHITE);
         if (isPaused)
         {
             // DrawRectangle(0, 0, gameScreenWidth, gameScreenHeight, Fade(BLACK, 0.6f));
@@ -188,6 +188,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawTitle();
         else if (currentState == STATE_PLAY)
             DrawGame();
+    
+        DrawFPSCustom();
     EndTextureMode();
 
     BeginDrawing();
@@ -219,9 +221,8 @@ void DrawFPSCustom()
 
 void DrawTitle()
 {
-    ClearBackground(BLACK);
     Rectangle src = { 0.0f, 0.0f, (float)backgroundTexture.width, (float)backgroundTexture.height };
-    Rectangle dst = { 0.0f, 0.0f, (float)gameScreenWidth + 1, (float)gameScreenHeight + 1 };
+    Rectangle dst = { 0.0f, 0.0f, (float)gameScreenWidth + 1, (float)gameScreenHeight + 2 };
     DrawTexturePro(backgroundTexture, src, dst, (Vector2){0, 0}, 0.0f, WHITE);
 
     static int highlighted = 1;  // 1 = "START", 2 = "HIGH SCORES"
@@ -242,7 +243,7 @@ void DrawTitle()
     const char *startText = "START";
     Vector2 startSize = MeasureTextEx(mediumFont, startText, 16, 1);
     float startX = (gameScreenWidth - startSize.x) / 2;
-    float startY = gameScreenHeight / 2 + 20;
+    float startY = gameScreenHeight / 2 + 70;
 
     Color startColor = (highlighted == 1) ? (Color){103, 255, 255, 255} : WHITE;
     DrawTextEx(mediumFont, startText, (Vector2){startX, startY}, 16, 1, startColor);
@@ -251,7 +252,7 @@ void DrawTitle()
     const char *scoreText = "HIGH SCORES";
     Vector2 scoreSize = MeasureTextEx(mediumFont, scoreText, 16, 1);
     float scoreX = (gameScreenWidth - scoreSize.x) / 2;
-    float scoreY = startY + 20;
+    float scoreY = gameScreenHeight / 2 + 90;
 
     Color scoreColor = (highlighted == 2) ? (Color){103, 255, 255, 255} : WHITE;
     DrawTextEx(mediumFont, scoreText, (Vector2){scoreX, scoreY}, 16, 1, scoreColor);
@@ -260,5 +261,4 @@ void DrawTitle()
 
 void DrawGame()
 {
-    ClearBackground(BLACK);
 }
