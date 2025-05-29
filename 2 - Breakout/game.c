@@ -9,18 +9,19 @@ int gameScreenWidth = 432;
 int gameScreenHeight = 243;
 
 bool isPaused = false;
-Sound pauseSound;
-Texture2D pauseTexture;
 
-GameState currentState = STATE_TITLE;
+GameState currentState = STATE_START;
 
-typedef struct {
-    int highlighted;  // 1 for "START", 2 for "HIGH SCORES"
-} StartState;
+StartMenu startMenu = { .highlighted = 1 };
 
-StartState state;
+Paddle playerPaddle;
 
 Color blueColor = {103, 255, 255, 255};
+
+#define PADDLE_SPEED 200.0f
+#define PADDLE_SKINS 4
+#define PADDLE_SIZES 4
+Rectangle paddleQuads[PADDLE_SKINS * PADDLE_SIZES];
 
 // Resources
 Texture2D backgroundTexture;
@@ -68,7 +69,6 @@ int main(void) {
     arrowsTexture = LoadTexture("res/graphics/arrows.png");
     heartsTexture = LoadTexture("res/graphics/hearts.png");
     particleTexture = LoadTexture("res/graphics/particle.png");
-    pauseTexture = LoadTexture("res/graphics/pause.png");
 
     // Load Sounds / Music
     paddleHitSound = LoadSound("res/sounds/paddle_hit.wav");
@@ -94,7 +94,8 @@ int main(void) {
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  // Texture scale filter to use
 
-    StartState state = { .highlighted = 1 };
+    InitPaddleQuads();
+    InitPaddle(&playerPaddle);
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -116,7 +117,6 @@ int main(void) {
     UnloadTexture(arrowsTexture);
     UnloadTexture(heartsTexture);
     UnloadTexture(particleTexture);
-    UnloadTexture(pauseTexture);
 
     // Load Sounds / Music
     UnloadSound(paddleHitSound);
@@ -141,7 +141,7 @@ int main(void) {
 
 void UpdateDrawFrame(RenderTexture2D target)
 {
-    if (IsKeyPressed(KEY_P)) {
+    if (currentState == STATE_PLAY && IsKeyPressed(KEY_SPACE)) {
         isPaused = !isPaused;
         PlaySound(pauseSound);
 
@@ -157,10 +157,8 @@ void UpdateDrawFrame(RenderTexture2D target)
 
     if (!isPaused) {
         switch (currentState) {
-            case STATE_TITLE:
-                if (IsKeyPressed(KEY_ENTER)) {
-                    currentState = STATE_PLAY;
-                }
+            case STATE_START:
+                UpdateStartMenu();
                 break;
             case STATE_PLAY:
                 GameLogic(deltaTime);
@@ -170,30 +168,22 @@ void UpdateDrawFrame(RenderTexture2D target)
 
     BeginTextureMode(target);
         ClearBackground(WHITE);
-        if (isPaused)
-        {
-            // DrawRectangle(0, 0, gameScreenWidth, gameScreenHeight, Fade(BLACK, 0.6f));
+        
+        // Background
+        Rectangle src = { 0, 0, backgroundTexture.width, backgroundTexture.height };
+        Rectangle dst = { 0, 0, gameScreenWidth + 1, gameScreenHeight + 2 };
+        DrawTexturePro(backgroundTexture, src, dst, (Vector2){0,0}, 0, WHITE);
 
-            float scale = 0.09f; // Adjust size to 50%
-            int pauseTextureWidth = (int)(pauseTexture.width * scale);
-            int pauseTextureHeight = (int)(pauseTexture.height * scale);
-            Vector2 position = {
-                (gameScreenWidth - pauseTextureWidth) / 2.0f,
-                (gameScreenHeight - pauseTextureHeight) / 2.0f
-            };
-
-            DrawTextureEx(pauseTexture, position, 0.0f, scale, WHITE);
-        }
-        else if (currentState == STATE_TITLE)
-            DrawTitle();
+        if (currentState == STATE_START)
+            DrawStartMenu();
         else if (currentState == STATE_PLAY)
             DrawGame();
-    
+
         DrawFPSCustom();
     EndTextureMode();
 
     BeginDrawing();
-        ClearBackground(WHITE);     // Clear screen background
+        ClearBackground(WHITE);
 
         // Draw render texture to screen, properly scaled
         DrawTexturePro(target.texture, (Rectangle){ 0.0f, 0.0f, (float)target.texture.width, (float)-target.texture.height },
@@ -204,12 +194,63 @@ void UpdateDrawFrame(RenderTexture2D target)
 
 void GameLogic(float dt)
 {
-    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
-    {
-        // Toggle the highlighted option (if 1, switch to 2; otherwise, switch to 1)
-        state.highlighted = (state.highlighted == 1) ? 2 : 1;
+    UpdatePaddle(&playerPaddle, dt);
+}
+
+void UpdateStartMenu(void)
+{
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN)) {
+        startMenu.highlighted = (startMenu.highlighted == 1) ? 2 : 1;
         PlaySound(paddleHitSound);
     }
+
+    if (IsKeyPressed(KEY_ENTER)) {
+        PlaySound(confirmSound);
+        if (startMenu.highlighted == 1) {
+            currentState = STATE_PLAY;
+        }
+    }
+}
+
+void InitPaddleQuads() {
+    int counter = 0;
+    for (int i = 0; i < PADDLE_SKINS; i++) {
+        int y = 64 + i * 32;
+
+        paddleQuads[counter++] = (Rectangle){ 0,      y, 32, 16 };  // small
+        paddleQuads[counter++] = (Rectangle){ 32,     y, 64, 16 };  // medium
+        paddleQuads[counter++] = (Rectangle){ 96,     y, 96, 16 };  // large
+        paddleQuads[counter++] = (Rectangle){ 0,  y + 16,128, 16 }; // huge
+    }
+}
+
+void InitPaddle(Paddle *p) {
+    p->x = gameScreenWidth / 2 - 32;
+    p->y = gameScreenHeight - 32;
+    p->dx = 0;
+    p->width = 64;
+    p->height = 16;
+    p->skin = 1;
+    p->size = 2;
+}
+
+void UpdatePaddle(Paddle *p, float dt) {
+    if (IsKeyDown(KEY_LEFT)) {
+        p->dx = -PADDLE_SPEED;
+    } else if (IsKeyDown(KEY_RIGHT)) {
+        p->dx = PADDLE_SPEED;
+    } else {
+        p->dx = 0;
+    }
+
+    p->x += p->dx * dt;
+    if (p->x < 0) p->x = 0;
+    if (p->x > gameScreenWidth - p->width) p->x = gameScreenWidth - p->width;
+}
+
+void DrawPaddle(Paddle *p) {
+    int index = (p->size - 1) + 4 * (p->skin - 1);
+    DrawTextureRec(mainTexture, paddleQuads[index], (Vector2){ p->x, p->y }, WHITE);
 }
 
 void DrawFPSCustom()
@@ -219,19 +260,8 @@ void DrawFPSCustom()
     DrawTextEx(smallFont, fpsText, (Vector2){5, 5}, 8, 1, GREEN);
 }
 
-void DrawTitle()
+void DrawStartMenu()
 {
-    Rectangle src = { 0.0f, 0.0f, (float)backgroundTexture.width, (float)backgroundTexture.height };
-    Rectangle dst = { 0.0f, 0.0f, (float)gameScreenWidth + 1, (float)gameScreenHeight + 2 };
-    DrawTexturePro(backgroundTexture, src, dst, (Vector2){0, 0}, 0.0f, WHITE);
-
-    static int highlighted = 1;  // 1 = "START", 2 = "HIGH SCORES"
-
-    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN)) {
-        highlighted = (highlighted == 1) ? 2 : 1;
-        PlaySound(paddleHitSound);
-    }
-
     // Title
     const char *title = "BREAKOUT";
     Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
@@ -245,7 +275,7 @@ void DrawTitle()
     float startX = (gameScreenWidth - startSize.x) / 2;
     float startY = gameScreenHeight / 2 + 70;
 
-    Color startColor = (highlighted == 1) ? (Color){103, 255, 255, 255} : WHITE;
+    Color startColor = (startMenu.highlighted == 1) ? (Color){103, 255, 255, 255} : WHITE;
     DrawTextEx(mediumFont, startText, (Vector2){startX, startY}, 16, 1, startColor);
 
     // Option 2: HIGH SCORES
@@ -254,11 +284,19 @@ void DrawTitle()
     float scoreX = (gameScreenWidth - scoreSize.x) / 2;
     float scoreY = gameScreenHeight / 2 + 90;
 
-    Color scoreColor = (highlighted == 2) ? (Color){103, 255, 255, 255} : WHITE;
+    Color scoreColor = (startMenu.highlighted == 2) ? (Color){103, 255, 255, 255} : WHITE;
     DrawTextEx(mediumFont, scoreText, (Vector2){scoreX, scoreY}, 16, 1, scoreColor);
 }
 
-
 void DrawGame()
 {
+    DrawPaddle(&playerPaddle);
+
+    if (isPaused)
+    {
+        const char *msg = "PAUSED";
+        Vector2 size = MeasureTextEx(largeFont, msg, 32, 1);
+        Vector2 position = { (gameScreenWidth - size.x)/2, gameScreenHeight/2 - 16 };
+        DrawTextEx(largeFont, msg, position, 32, 1, blueColor);
+    }
 }
