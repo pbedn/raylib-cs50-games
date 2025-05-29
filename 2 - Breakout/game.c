@@ -23,6 +23,9 @@ Color blueColor = {103, 255, 255, 255};
 #define PADDLE_SIZES 4
 Rectangle paddleQuads[PADDLE_SKINS * PADDLE_SIZES];
 
+Rectangle ballQuads[7];
+Ball ball;
+
 // Resources
 Texture2D backgroundTexture;
 Texture2D mainTexture;
@@ -96,6 +99,10 @@ int main(void) {
 
     InitPaddleQuads();
     InitPaddle(&playerPaddle);
+    InitPaddleQuads(mainTexture);
+    InitPaddle(&playerPaddle);
+    InitBallQuads(mainTexture);
+    InitBall(&ball);
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -192,10 +199,32 @@ void UpdateDrawFrame(RenderTexture2D target)
     EndDrawing();
 }
 
+/* UPDATE FUNCTIONS */
+
 void GameLogic(float dt)
 {
     UpdatePaddle(&playerPaddle, dt);
+    UpdateBall(&ball, dt);
+
+    Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
+    Rectangle paddleRect = { playerPaddle.x, playerPaddle.y, (float)playerPaddle.width, (float)playerPaddle.height };
+    if (CheckCollisionRecs(ballRect, paddleRect)) {
+        ball.y = playerPaddle.y - ball.height;
+        ball.dy = -ball.dy;
+
+        float paddleCenter = playerPaddle.x + playerPaddle.width / 2.0f;
+        float ballCenter = ball.x + ball.width / 2;
+
+        if (ballCenter < paddleCenter && playerPaddle.dx < 0) {
+            ball.dx = -50.0f - 8.0f * (paddleCenter - ballCenter);
+        } else if (ballCenter > paddleCenter && playerPaddle.dx > 0) {
+            ball.dx = 50.0f + 8.0f * (ballCenter - paddleCenter);
+        }
+
+        PlaySound(paddleHitSound);
+    }
 }
+
 
 void UpdateStartMenu(void)
 {
@@ -248,10 +277,51 @@ void UpdatePaddle(Paddle *p, float dt) {
     if (p->x > gameScreenWidth - p->width) p->x = gameScreenWidth - p->width;
 }
 
-void DrawPaddle(Paddle *p) {
-    int index = (p->size - 1) + 4 * (p->skin - 1);
-    DrawTextureRec(mainTexture, paddleQuads[index], (Vector2){ p->x, p->y }, WHITE);
+void InitBallQuads(Texture2D atlas) {
+    int x = 96;
+    int y = 48;
+    int count = 0;
+    for (int j = 0; j < 2; j++) {
+        for (int i = 0; i < 4; i++) {
+            if (count < 7) {
+                ballQuads[count++] = (Rectangle){ x + i * 8, y + j * 8, 8, 8 };
+            }
+        }
+    }
 }
+
+void InitBall(Ball *b) {
+    b->x = gameScreenWidth / 2 - 4;
+    b->y = gameScreenHeight / 2 - 4;
+    b->dx = GetRandomValue(-200, 200);
+    b->dy = GetRandomValue(-60, -50);
+    b->width = 8;
+    b->height = 8;
+    b->skin = 0;
+}
+
+void UpdateBall(Ball *b, float dt) {
+    b->x += b->dx * dt;
+    b->y += b->dy * dt;
+
+    if (b->x <= 0) {
+        b->x = 0;
+        b->dx = -b->dx;
+        PlaySound(wallHitSound);
+    } else if (b->x + b->width >= gameScreenWidth) {
+        b->x = gameScreenWidth - b->width;
+        b->dx = -b->dx;
+        PlaySound(wallHitSound);
+    }
+
+    if (b->y <= 0) {
+        b->y = 0;
+        b->dy = -b->dy;
+        PlaySound(wallHitSound);
+    }
+}
+
+/* DRAW FUNCTIONS */
 
 void DrawFPSCustom()
 {
@@ -291,6 +361,7 @@ void DrawStartMenu()
 void DrawGame()
 {
     DrawPaddle(&playerPaddle);
+    DrawBall(&ball);
 
     if (isPaused)
     {
@@ -299,4 +370,13 @@ void DrawGame()
         Vector2 position = { (gameScreenWidth - size.x)/2, gameScreenHeight/2 - 16 };
         DrawTextEx(largeFont, msg, position, 32, 1, blueColor);
     }
+}
+
+void DrawBall(Ball *b) {
+    DrawTextureRec(mainTexture, ballQuads[b->skin], (Vector2){ b->x, b->y }, WHITE);
+}
+
+void DrawPaddle(Paddle *p) {
+    int index = (p->size - 1) + 4 * (p->skin - 1);
+    DrawTextureRec(mainTexture, paddleQuads[index], (Vector2){ p->x, p->y }, WHITE);
 }

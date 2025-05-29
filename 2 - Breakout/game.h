@@ -1,3 +1,6 @@
+#ifndef GAME_H
+#define GAME_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -56,3 +59,20 @@ void InitPaddleQuads();
 void InitPaddle(Paddle *p);
 void UpdatePaddle(Paddle *p, float dt);
 void DrawPaddle(Paddle *p);
+
+typedef struct {
+    float x, y;
+    float dx, dy;
+    int width, height;
+    int skin;  // 0 to 6
+} Ball;
+
+extern Ball ball;
+extern Rectangle ballQuads[7];
+
+void InitBall(Ball *b);
+void UpdateBall(Ball *b, float dt);
+void DrawBall(Ball *b);
+void InitBallQuads(Texture2D atlas);
+
+#endif // GAME_H
