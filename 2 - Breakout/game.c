@@ -18,13 +18,12 @@ Paddle playerPaddle;
 
 Color blueColor = {103, 255, 255, 255};
 
-#define PADDLE_SPEED 200.0f
-#define PADDLE_SKINS 4
-#define PADDLE_SIZES 4
 Rectangle paddleQuads[PADDLE_SKINS * PADDLE_SIZES];
-
 Rectangle ballQuads[7];
 Ball ball;
+int brickCount = 0;
+Brick bricks[MAX_BRICKS];
+Rectangle brickQuads[BRICK_QUAD_COUNT];
 
 // Resources
 Texture2D backgroundTexture;
@@ -99,10 +98,10 @@ int main(void) {
 
     InitPaddleQuads();
     InitPaddle(&playerPaddle);
-    InitPaddleQuads(mainTexture);
-    InitPaddle(&playerPaddle);
-    InitBallQuads(mainTexture);
+    InitBallQuads();
     InitBall(&ball);
+    InitBrickQuads();
+    InitBricks();
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -207,6 +206,8 @@ void GameLogic(float dt)
     UpdateBall(&ball, dt);
 
     Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
+
+    // Ball-Paddle Collision
     Rectangle paddleRect = { playerPaddle.x, playerPaddle.y, (float)playerPaddle.width, (float)playerPaddle.height };
     if (CheckCollisionRecs(ballRect, paddleRect)) {
         ball.y = playerPaddle.y - ball.height;
@@ -222,6 +223,19 @@ void GameLogic(float dt)
         }
 
         PlaySound(paddleHitSound);
+    }
+
+    // Ball-Brick Collision
+    for (int i = 0; i < brickCount; i++) {
+        if (bricks[i].inPlay) {
+            Rectangle brickRect = { bricks[i].x, bricks[i].y, bricks[i].width, bricks[i].height };
+            if (CheckCollisionRecs(ballRect, brickRect)) {
+                bricks[i].inPlay = false;
+                ball.dy = -ball.dy; // Simple bounce response
+                PlaySound(brickHit1Sound);
+                break; // only hit one brick per frame
+            }
+        }
     }
 }
 
@@ -241,7 +255,8 @@ void UpdateStartMenu(void)
     }
 }
 
-void InitPaddleQuads() {
+void InitPaddleQuads()
+{
     int counter = 0;
     for (int i = 0; i < PADDLE_SKINS; i++) {
         int y = 64 + i * 32;
@@ -253,7 +268,8 @@ void InitPaddleQuads() {
     }
 }
 
-void InitPaddle(Paddle *p) {
+void InitPaddle(Paddle *p)
+{
     p->x = gameScreenWidth / 2 - 32;
     p->y = gameScreenHeight - 32;
     p->dx = 0;
@@ -263,7 +279,8 @@ void InitPaddle(Paddle *p) {
     p->size = 2;
 }
 
-void UpdatePaddle(Paddle *p, float dt) {
+void UpdatePaddle(Paddle *p, float dt)
+{
     if (IsKeyDown(KEY_LEFT)) {
         p->dx = -PADDLE_SPEED;
     } else if (IsKeyDown(KEY_RIGHT)) {
@@ -277,7 +294,8 @@ void UpdatePaddle(Paddle *p, float dt) {
     if (p->x > gameScreenWidth - p->width) p->x = gameScreenWidth - p->width;
 }
 
-void InitBallQuads(Texture2D atlas) {
+void InitBallQuads()
+{
     int x = 96;
     int y = 48;
     int count = 0;
@@ -290,7 +308,8 @@ void InitBallQuads(Texture2D atlas) {
     }
 }
 
-void InitBall(Ball *b) {
+void InitBall(Ball *b)
+{
     b->x = gameScreenWidth / 2 - 4;
     b->y = gameScreenHeight / 2 - 4;
     b->dx = GetRandomValue(-200, 200);
@@ -300,7 +319,8 @@ void InitBall(Ball *b) {
     b->skin = 0;
 }
 
-void UpdateBall(Ball *b, float dt) {
+void UpdateBall(Ball *b, float dt)
+{
     b->x += b->dx * dt;
     b->y += b->dy * dt;
 
@@ -320,6 +340,55 @@ void UpdateBall(Ball *b, float dt) {
         PlaySound(wallHitSound);
     }
 }
+
+void InitBrickQuads()
+{
+    int count = 0;
+    for (int y = 0; y < 96 && count < BRICK_QUAD_COUNT; y += BRICK_HEIGHT) {
+        for (int x = 0; x < 160 && count < BRICK_QUAD_COUNT; x += BRICK_WIDTH) {
+            brickQuads[count++] = (Rectangle){ x, y, BRICK_WIDTH, BRICK_HEIGHT };
+        }
+    }
+}
+
+
+void InitBricks()
+{
+    int color, tier, spriteIndex;
+    color = GetRandomValue(1, 3);
+    tier = GetRandomValue(0, 1);
+    spriteIndex = (color - 1) * 4 + tier;
+
+    brickCount = 0;
+    int numRows = GetRandomValue(1, 5);
+    int numCols = GetRandomValue(7, 13);
+
+    for (int y = 0; y < numRows; y++) {
+        for (int x = 0; x < numCols; x++) {
+            if (brickCount >= MAX_BRICKS) break;
+
+            // Randomize each brick
+            // color = GetRandomValue(1, 3);
+            // tier = GetRandomValue(0, 1);
+            // spriteIndex = 1 + (color - 1) * 4 + tier;
+
+            float bx = x * BRICK_WIDTH + 8 + (13 - numCols) * 16;
+            float by = (y + 1) * BRICK_HEIGHT;
+
+            bricks[brickCount++] = (Brick){
+                .x = bx,
+                .y = by,
+                .width = BRICK_WIDTH,
+                .height = BRICK_HEIGHT,
+                .inPlay = true,
+                .color = color,
+                .tier = tier,
+                .spriteIndex = spriteIndex
+            };
+        }
+    }
+}
+
 
 /* DRAW FUNCTIONS */
 
@@ -362,6 +431,7 @@ void DrawGame()
 {
     DrawPaddle(&playerPaddle);
     DrawBall(&ball);
+    DrawBricks();
 
     if (isPaused)
     {
@@ -372,11 +442,27 @@ void DrawGame()
     }
 }
 
-void DrawBall(Ball *b) {
+void DrawBall(Ball *b)
+{
     DrawTextureRec(mainTexture, ballQuads[b->skin], (Vector2){ b->x, b->y }, WHITE);
 }
 
-void DrawPaddle(Paddle *p) {
+void DrawPaddle(Paddle *p)
+{
     int index = (p->size - 1) + 4 * (p->skin - 1);
     DrawTextureRec(mainTexture, paddleQuads[index], (Vector2){ p->x, p->y }, WHITE);
+}
+
+void DrawBricks()
+{
+    for (int i = 0; i < brickCount; i++) {
+        if (bricks[i].inPlay) {
+            DrawTextureRec(
+            mainTexture,
+            brickQuads[bricks[i].spriteIndex],
+            (Vector2){ bricks[i].x, bricks[i].y },
+            WHITE
+        );
+        }
+    }
 }

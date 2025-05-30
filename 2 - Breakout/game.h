@@ -19,11 +19,6 @@
 #define MAX(a, b) ((a)>(b)? (a) : (b))
 #define MIN(a, b) ((a)<(b)? (a) : (b))
 
-Font defaultFont;
-void drawText(const char *text, int x, int y, float fontSize, Color color) {
-    DrawTextEx(defaultFont, text, (Vector2){x, y}, fontSize, 2, color);
-}
-
 /* GAME */
 void UpdateDrawFrame(RenderTexture2D target);
 void GameLogic(float deltaTime);
@@ -37,13 +32,14 @@ typedef enum {
     STATE_PLAY,
 } GameState;
 
-extern GameState currentState;
-
 typedef struct {
-    int highlighted;          // 1 = START, 2 = HIGH SCORES
+    int highlighted; // 1 = START, 2 = HIGH SCORES
 } StartMenu;
 
-extern StartMenu startMenu; 
+
+#define PADDLE_SPEED 200.0f
+#define PADDLE_SKINS 4
+#define PADDLE_SIZES 4
 
 typedef struct {
     float x, y;
@@ -53,12 +49,11 @@ typedef struct {
     int size;  // 1 to 4
 } Paddle;
 
-extern Paddle playerPaddle;
-
-void InitPaddleQuads();
+void InitPaddleQuads(void);
 void InitPaddle(Paddle *p);
 void UpdatePaddle(Paddle *p, float dt);
 void DrawPaddle(Paddle *p);
+
 
 typedef struct {
     float x, y;
@@ -67,12 +62,28 @@ typedef struct {
     int skin;  // 0 to 6
 } Ball;
 
-extern Ball ball;
-extern Rectangle ballQuads[7];
-
+void InitBallQuads(void);
 void InitBall(Ball *b);
 void UpdateBall(Ball *b, float dt);
 void DrawBall(Ball *b);
-void InitBallQuads(Texture2D atlas);
+
+
+#define BRICK_WIDTH 32
+#define BRICK_HEIGHT 16
+#define MAX_BRICKS 100
+#define BRICK_QUAD_COUNT 21
+
+typedef struct {
+    float x, y;
+    float width, height;
+    bool inPlay;
+    int color;
+    int tier;
+    int spriteIndex;
+} Brick;
+
+void InitBrickQuads(void);
+void InitBricks(void);
+void DrawBricks(void);
 
 #endif // GAME_H
