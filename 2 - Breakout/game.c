@@ -215,25 +215,43 @@ void GameLogic(float dt)
 
         float paddleCenter = playerPaddle.x + playerPaddle.width / 2.0f;
         float ballCenter = ball.x + ball.width / 2;
+        float diff = paddleCenter - ballCenter;
 
         if (ballCenter < paddleCenter && playerPaddle.dx < 0) {
-            ball.dx = -50.0f - 8.0f * (paddleCenter - ballCenter);
+            ball.dx = -50.0f - 8.0f * fabsf(diff);
         } else if (ballCenter > paddleCenter && playerPaddle.dx > 0) {
-            ball.dx = 50.0f + 8.0f * (ballCenter - paddleCenter);
+            ball.dx = 50.0f + 8.0f * fabsf(diff);
         }
 
         PlaySound(paddleHitSound);
     }
 
-    // Ball-Brick Collision
+    // Ball-Brick Collision with Edge Detection
     for (int i = 0; i < brickCount; i++) {
         if (bricks[i].inPlay) {
             Rectangle brickRect = { bricks[i].x, bricks[i].y, bricks[i].width, bricks[i].height };
             if (CheckCollisionRecs(ballRect, brickRect)) {
                 bricks[i].inPlay = false;
-                ball.dy = -ball.dy; // Simple bounce response
-                PlaySound(brickHit1Sound);
-                break; // only hit one brick per frame
+                PlaySound(brickHit2Sound);
+
+                if (ball.x + ball.width - 1 < bricks[i].x && ball.dx > 0) {
+                    ball.dx = -ball.dx;
+                    ball.x = bricks[i].x - ball.width;
+                } else if (ball.x + 1 > bricks[i].x + bricks[i].width && ball.dx < 0) {
+                    ball.dx = -ball.dx;
+                    ball.x = bricks[i].x + bricks[i].width;
+                } else if (ball.y < bricks[i].y) {
+                    ball.dy = -ball.dy;
+                    ball.y = bricks[i].y - ball.height;
+                } else {
+                    ball.dy = -ball.dy;
+                    ball.y = bricks[i].y + bricks[i].height;
+                }
+
+                // slight speed up
+                ball.dy *= 1.02f;
+
+                break; // only one brick per frame
             }
         }
     }
