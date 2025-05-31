@@ -25,6 +25,9 @@ int brickCount = 0;
 Brick bricks[MAX_BRICKS];
 Rectangle brickQuads[BRICK_QUAD_COUNT];
 
+int health;
+int score;
+
 // Resources
 Texture2D backgroundTexture;
 Texture2D mainTexture;
@@ -51,7 +54,7 @@ Sound highScoreSound;
 Sound pauseSound;
 Music music;
 
-int main(void) {
+int main() {
     SetTraceLogLevel(LOG_WARNING);
 
     /* Initialization: Set up the window and load game resources. */
@@ -102,6 +105,7 @@ int main(void) {
     InitBall(&ball);
     InitBrickQuads();
     InitBricks();
+    InitGameState();
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -166,8 +170,14 @@ void UpdateDrawFrame(RenderTexture2D target)
             case STATE_START:
                 UpdateStartMenu();
                 break;
+            case STATE_SERVE:
+                ServeState(deltaTime);
+                break;
             case STATE_PLAY:
                 GameLogic(deltaTime);
+                break;
+            case STATE_GAME_OVER:
+                GameOverState();
                 break;
         }
     }
@@ -184,6 +194,10 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawStartMenu();
         else if (currentState == STATE_PLAY)
             DrawGame();
+        else if (currentState == STATE_SERVE)
+            DrawServe();
+        else if (currentState == STATE_GAME_OVER)
+            DrawGameOver();
 
         DrawFPSCustom();
     EndTextureMode();
@@ -200,10 +214,27 @@ void UpdateDrawFrame(RenderTexture2D target)
 
 /* UPDATE FUNCTIONS */
 
+void InitGameState()
+{
+    health = 3;
+    score = 0;
+}
+
 void GameLogic(float dt)
 {
     UpdatePaddle(&playerPaddle, dt);
     UpdateBall(&ball, dt);
+
+    if (ball.y >= gameScreenHeight) {
+        PlaySound(hurtSound);
+        health--;
+
+        if (health == 0) {
+            currentState = STATE_GAME_OVER;
+        } else {
+            currentState = STATE_SERVE;
+        }
+    }
 
     Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
 
@@ -233,17 +264,22 @@ void GameLogic(float dt)
             if (CheckCollisionRecs(ballRect, brickRect)) {
                 bricks[i].inPlay = false;
                 PlaySound(brickHit2Sound);
+                score += 10;
 
                 if (ball.x + ball.width - 1 < bricks[i].x && ball.dx > 0) {
+                    // Hit left side
                     ball.dx = -ball.dx;
                     ball.x = bricks[i].x - ball.width;
                 } else if (ball.x + 1 > bricks[i].x + bricks[i].width && ball.dx < 0) {
+                    // Hit right side
                     ball.dx = -ball.dx;
                     ball.x = bricks[i].x + bricks[i].width;
                 } else if (ball.y < bricks[i].y) {
+                    // Hit top of brick, ball going down
                     ball.dy = -ball.dy;
                     ball.y = bricks[i].y - ball.height;
                 } else {
+                    // Hit bottom of brick, ball going up
                     ball.dy = -ball.dy;
                     ball.y = bricks[i].y + bricks[i].height;
                 }
@@ -258,7 +294,7 @@ void GameLogic(float dt)
 }
 
 
-void UpdateStartMenu(void)
+void UpdateStartMenu()
 {
     if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN)) {
         startMenu.highlighted = (startMenu.highlighted == 1) ? 2 : 1;
@@ -268,7 +304,7 @@ void UpdateStartMenu(void)
     if (IsKeyPressed(KEY_ENTER)) {
         PlaySound(confirmSound);
         if (startMenu.highlighted == 1) {
-            currentState = STATE_PLAY;
+            currentState = STATE_SERVE;
         }
     }
 }
@@ -378,7 +414,7 @@ void InitBricks()
     spriteIndex = (color - 1) * 4 + tier;
 
     brickCount = 0;
-    int numRows = GetRandomValue(1, 5);
+    int numRows = GetRandomValue(3, 5);
     int numCols = GetRandomValue(7, 13);
 
     for (int y = 0; y < numRows; y++) {
@@ -407,6 +443,35 @@ void InitBricks()
     }
 }
 
+void ServeState(float dt) {
+    // Paddle movement
+    UpdatePaddle(&playerPaddle, dt);
+
+    // Place ball above paddle
+    ball.x = playerPaddle.x + (playerPaddle.width / 2) - (ball.width / 2);
+    ball.y = playerPaddle.y - ball.height;
+
+    // Wait for enter to serve
+    if (IsKeyPressed(KEY_ENTER)) {
+        // Give ball a new velocity
+        ball.dx = GetRandomValue(-200, 200);
+        ball.dy = GetRandomValue(-60, -50);
+        currentState = STATE_PLAY;
+    }
+}
+
+void GameOverState()
+{
+    if (IsKeyPressed(KEY_ENTER)) {
+        // Reset game state to initial values
+        health = 3;
+        score = 0;
+        InitPaddle(&playerPaddle);
+        InitBall(&ball);
+        InitBricks();
+        currentState = STATE_START;
+    }
+}
 
 /* DRAW FUNCTIONS */
 
@@ -451,6 +516,10 @@ void DrawGame()
     DrawBall(&ball);
     DrawBricks();
 
+    DrawHealth();
+
+    DrawText(TextFormat("Score: %d", score), gameScreenWidth - 70, 5, 10, WHITE);
+
     if (isPaused)
     {
         const char *msg = "PAUSED";
@@ -483,4 +552,51 @@ void DrawBricks()
         );
         }
     }
+}
+
+void DrawHealth()
+{
+    // The first frame is a full heart, the second is an empty heart.
+    Rectangle fullHeart = { 0, 0, 10, 9 };
+    Rectangle emptyHeart = { 10, 0, 10, 9 };
+    float x = gameScreenWidth - 100;
+    for (int i = 0; i < health; i++) {
+        DrawTextureRec(heartsTexture, fullHeart, (Vector2){ x, 4 }, WHITE);
+        x += 11;
+    }
+    for (int i = 0; i < 3 - health; i++) {
+        DrawTextureRec(heartsTexture, emptyHeart, (Vector2){ x, 4 }, WHITE);
+        x += 11;
+    }
+}
+
+void DrawServe()
+{
+    DrawPaddle(&playerPaddle);
+    DrawBall(&ball);
+    DrawBricks();
+    DrawHealth();
+
+    // Draw score at top right
+    DrawText(TextFormat("Score: %d", score), gameScreenWidth - 70, 5, 10, WHITE);
+
+    // Draw serve message
+    const char* msg = "Press Enter to serve!";
+    int textWidth = MeasureText(msg, 20);
+    Vector2 position = {(gameScreenWidth - textWidth) / 2, gameScreenHeight / 2};
+    DrawTextEx(mediumFont, msg, position, 16, 1, WHITE);
+}
+
+void DrawGameOver()
+{
+    int centerX = gameScreenWidth / 2;
+    int y1 = gameScreenHeight / 3;
+    int y2 = gameScreenHeight / 2;
+    int y3 = gameScreenHeight - gameScreenHeight / 4;
+    const char* msg1 = "GAME OVER";
+    const char* msg2 = TextFormat("Final Score: %d", score);
+    const char* msg3 = "Press Enter!";
+    DrawTextEx(largeFont, msg1, (Vector2){centerX - MeasureText(msg1, 32)/2, y1}, 32, 1, WHITE);
+    DrawTextEx(mediumFont, msg2,(Vector2){centerX - MeasureText(msg2, 20)/2, y2}, 16, 1, WHITE);
+    DrawTextEx(mediumFont, msg3,(Vector2){centerX - MeasureText(msg3, 20)/2, y3}, 16, 1, WHITE);
 }

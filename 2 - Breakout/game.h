@@ -30,6 +30,8 @@ void DrawStartMenu(void);
 typedef enum {
     STATE_START,
     STATE_PLAY,
+    STATE_SERVE,
+    STATE_GAME_OVER,
 } GameState;
 
 typedef struct {
@@ -85,5 +87,13 @@ typedef struct {
 void InitBrickQuads(void);
 void InitBricks(void);
 void DrawBricks(void);
+
+void ServeState(float dt);
+void GameOverState(void);
+void DrawHealth(void);
+void DrawServe(void);
+void DrawGameOver(void);
+
+void InitGameState(void);
 
 #endif // GAME_H
