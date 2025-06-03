@@ -21,12 +21,13 @@ Color blueColor = {103, 255, 255, 255};
 Rectangle paddleQuads[PADDLE_SKINS * PADDLE_SIZES];
 Rectangle ballQuads[7];
 Ball ball;
-int brickCount = 0;
+int brickCount;
 Brick bricks[MAX_BRICKS];
 Rectangle brickQuads[BRICK_QUAD_COUNT];
 
 int health;
 int score;
+int level;
 
 // Resources
 Texture2D backgroundTexture;
@@ -99,13 +100,13 @@ int main() {
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  // Texture scale filter to use
 
+    InitGameState();
     InitPaddleQuads();
     InitPaddle(&playerPaddle);
     InitBallQuads();
     InitBall(&ball);
     InitBrickQuads();
     InitBricks();
-    InitGameState();
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -216,6 +217,8 @@ void UpdateDrawFrame(RenderTexture2D target)
 
 void InitGameState()
 {
+    brickCount = 0;
+    level = 1;
     health = 3;
     score = 0;
 }
@@ -408,26 +411,60 @@ void InitBrickQuads()
 
 void InitBricks()
 {
-    int color, tier, spriteIndex;
-    color = GetRandomValue(1, 3);
-    tier = GetRandomValue(0, 1);
-    spriteIndex = (color - 1) * 4 + tier;
-
     brickCount = 0;
     int numRows = GetRandomValue(3, 5);
     int numCols = GetRandomValue(7, 13);
+    if (numCols % 2 == 0) numCols++; // ensure columns odd
+
+    // Level-dependent color/tier richness
+    int highestTier = (level / 5 > 3) ? 3 : level / 5;
+    int highestColor = ((level % 5) + 3 > 5) ? 5 : (level % 5) + 3;
 
     for (int y = 0; y < numRows; y++) {
+
+        bool skipPattern = GetRandomValue(0, 1) == 1;
+        bool alternatePattern = GetRandomValue(0, 1) == 1;
+
+        int alternateColor1 = GetRandomValue(1, highestColor);
+        int alternateColor2 = GetRandomValue(1, highestColor);
+        int alternateTier1 = GetRandomValue(0, highestTier);
+        int alternateTier2 = GetRandomValue(0, highestTier);
+
+        bool skipFlag = GetRandomValue(0, 1) == 1;
+        bool alternateFlag = GetRandomValue(0, 1) == 1;
+
+        int solidColor = GetRandomValue(1, highestColor);
+        int solidTier = GetRandomValue(0, highestTier);
+
         for (int x = 0; x < numCols; x++) {
             if (brickCount >= MAX_BRICKS) break;
 
-            // Randomize each brick
-            // color = GetRandomValue(1, 3);
-            // tier = GetRandomValue(0, 1);
-            // spriteIndex = 1 + (color - 1) * 4 + tier;
+            if (skipPattern && skipFlag) {
+                skipFlag = !skipFlag;
+                continue;
+            } else {
+                skipFlag = !skipFlag;
+            }
 
             float bx = x * BRICK_WIDTH + 8 + (13 - numCols) * 16;
             float by = (y + 1) * BRICK_HEIGHT;
+
+            int color, tier;
+            if (alternatePattern) {
+                if (alternateFlag) {
+                    color = alternateColor1;
+                    tier = alternateTier1;
+                } else {
+                    color = alternateColor2;
+                    tier = alternateTier2;
+                }
+                alternateFlag = !alternateFlag;
+            } else {
+                color = solidColor;
+                tier = solidTier;
+            }
+
+            int spriteIndex = (color - 1) * 4 + tier; // assuming 4 tiers per color
 
             bricks[brickCount++] = (Brick){
                 .x = bx,
@@ -468,7 +505,7 @@ void GameOverState()
         score = 0;
         InitPaddle(&playerPaddle);
         InitBall(&ball);
-        InitBricks();
+        level++; InitBricks();
         currentState = STATE_START;
     }
 }
@@ -518,7 +555,8 @@ void DrawGame()
 
     DrawHealth();
 
-    DrawText(TextFormat("Score: %d", score), gameScreenWidth - 70, 5, 10, WHITE);
+    Vector2 scorePosition = {gameScreenWidth - 60, 5};
+    DrawTextEx(smallFont, TextFormat("Score: %d", score), scorePosition, 8, 1, WHITE);
 
     if (isPaused)
     {
@@ -578,7 +616,8 @@ void DrawServe()
     DrawHealth();
 
     // Draw score at top right
-    DrawText(TextFormat("Score: %d", score), gameScreenWidth - 70, 5, 10, WHITE);
+    Vector2 scorePosition = {gameScreenWidth - 60, 5};
+    DrawTextEx(smallFont, TextFormat("Score: %d", score), scorePosition, 8, 1, WHITE);
 
     // Draw serve message
     const char* msg = "Press Enter to serve!";
