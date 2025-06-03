@@ -69,7 +69,6 @@ void InitBall(Ball *b);
 void UpdateBall(Ball *b, float dt);
 void DrawBall(Ball *b);
 
-
 #define BRICK_WIDTH 32
 #define BRICK_HEIGHT 16
 #define MAX_BRICKS 100
@@ -95,5 +94,8 @@ void DrawServe(void);
 void DrawGameOver(void);
 
 void InitGameState(void);
+
+void HandleBallPaddleCollision(Ball *ball, Paddle *paddle);
+void HandleBallBrickCollision(Ball *ball, Brick *brick);
 
 #endif // GAME_H

@@ -13,7 +13,7 @@ Based on Week 2 from course CS50’s Introduction to Game Development
 
 ### Info:
 
-Differences between course:
+Differences to CS course:
 
 * Used virtual screen from raylib examples/core/core_window_letterbox.c as replacement for push.lua
 * Instead of full state machine - switch

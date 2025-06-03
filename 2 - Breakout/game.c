@@ -1,5 +1,6 @@
 #include "game.h"
 #include "raylib.h"
+#include <math.h>
 #include <stdio.h>
 
 const int screenWidth = 1280;
@@ -56,7 +57,7 @@ Sound pauseSound;
 Music music;
 
 int main() {
-    SetTraceLogLevel(LOG_WARNING);
+    SetTraceLogLevel(LOG_DEBUG);
 
     /* Initialization: Set up the window and load game resources. */
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
@@ -94,7 +95,7 @@ int main() {
 
     // Start music
     SetMusicVolume(music, 0.25f);
-    PlayMusicStream(music);
+    // PlayMusicStream(music);
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
@@ -239,63 +240,100 @@ void GameLogic(float dt)
         }
     }
 
-    Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
-
     // Ball-Paddle Collision
+    Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
     Rectangle paddleRect = { playerPaddle.x, playerPaddle.y, (float)playerPaddle.width, (float)playerPaddle.height };
-    if (CheckCollisionRecs(ballRect, paddleRect)) {
-        ball.y = playerPaddle.y - ball.height;
-        ball.dy = -ball.dy;
-
-        float paddleCenter = playerPaddle.x + playerPaddle.width / 2.0f;
-        float ballCenter = ball.x + ball.width / 2;
-        float diff = paddleCenter - ballCenter;
-
-        if (ballCenter < paddleCenter && playerPaddle.dx < 0) {
-            ball.dx = -50.0f - 8.0f * fabsf(diff);
-        } else if (ballCenter > paddleCenter && playerPaddle.dx > 0) {
-            ball.dx = 50.0f + 8.0f * fabsf(diff);
-        }
-
-        PlaySound(paddleHitSound);
-    }
+    if (CheckCollisionRecs(ballRect, paddleRect))
+        HandleBallPaddleCollision(&ball, &playerPaddle);
 
     // Ball-Brick Collision with Edge Detection
     for (int i = 0; i < brickCount; i++) {
         if (bricks[i].inPlay) {
+            Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
             Rectangle brickRect = { bricks[i].x, bricks[i].y, bricks[i].width, bricks[i].height };
             if (CheckCollisionRecs(ballRect, brickRect)) {
-                bricks[i].inPlay = false;
-                PlaySound(brickHit2Sound);
-                score += 10;
-
-                if (ball.x + ball.width - 1 < bricks[i].x && ball.dx > 0) {
-                    // Hit left side
-                    ball.dx = -ball.dx;
-                    ball.x = bricks[i].x - ball.width;
-                } else if (ball.x + 1 > bricks[i].x + bricks[i].width && ball.dx < 0) {
-                    // Hit right side
-                    ball.dx = -ball.dx;
-                    ball.x = bricks[i].x + bricks[i].width;
-                } else if (ball.y < bricks[i].y) {
-                    // Hit top of brick, ball going down
-                    ball.dy = -ball.dy;
-                    ball.y = bricks[i].y - ball.height;
-                } else {
-                    // Hit bottom of brick, ball going up
-                    ball.dy = -ball.dy;
-                    ball.y = bricks[i].y + bricks[i].height;
-                }
-
-                // slight speed up
-                ball.dy *= 1.02f;
-
-                break; // only one brick per frame
+                HandleBallBrickCollision(&ball, &bricks[i]);
+                break; // tylko jedna kolizja w jednej klatce
             }
         }
     }
 }
 
+void HandleBallPaddleCollision(Ball *ball, Paddle *playerPaddle)
+{
+    ball->y = playerPaddle->y - ball->height;
+    ball->dy = -ball->dy;
+
+    float paddleCenter = playerPaddle->x + playerPaddle->width / 2.0f;
+    float ballCenter = ball->x + ball->width / 2;
+    float diff = paddleCenter - ballCenter;
+
+    if (ballCenter < paddleCenter && playerPaddle->dx < 0) {
+        ball->dx = -50.0f - 8.0f * fabsf(diff);
+    } else if (ballCenter > paddleCenter && playerPaddle->dx > 0) {
+        ball->dx = 50.0f + 8.0f * fabsf(diff);
+    }
+
+    PlaySound(paddleHitSound);
+}
+
+void HandleBallBrickCollision(Ball *ball, Brick *brick)
+{    
+    // SCORING
+    score += (brick->tier * 200 + brick->color * 25);
+    // if we're at a higher tier than the base, we need to go down a tier
+    // if we're already at the lowest color, else just go down a color
+    if (brick->tier > 0) {
+        if (brick->color == 1) {
+            brick->tier--;
+            brick->color = 5;
+        } else {
+            brick->color--;
+        }
+    }
+    else {
+        // if we're in the first tier and the base color, remove brick from play
+        if (brick->color == 1)
+            brick->inPlay = false;
+        else
+            brick->color--;
+    }
+
+    // TraceLog(LOG_DEBUG, "Brick hit: index=%d, color=%d, tier=%d, inPlay=%s",
+    //          i, brick->color, brick->tier, brick->inPlay ? "true" : "false");
+
+
+    // play a second layer sound if the brick is destroyed
+    if (!brick->inPlay) {
+        PlaySound(brickHit1Sound);
+    } else {
+        PlaySound(brickHit2Sound);
+    }
+
+
+    if (ball->x + ball->width - 1 < brick->x && ball->dx > 0) {
+        // Hit left side
+        ball->dx = -ball->dx;
+        ball->x = brick->x - ball->width;
+    } else if (ball->x + 1 > brick->x + brick->width && ball->dx < 0) {
+        // Hit right side
+        ball->dx = -ball->dx;
+        ball->x = brick->x + brick->width;
+    } else if (ball->y < brick->y) {
+        // Hit top of brick, ball going down
+        ball->dy = -ball->dy;
+        ball->y = brick->y - ball->height;
+    } else {
+        // Hit bottom of brick, ball going up
+        ball->dy = -ball->dy;
+        ball->y = brick->y + brick->height;
+    }
+
+    // slight speed up
+    ball->dy *= 1.02f;
+
+    brick->spriteIndex = brick->tier * 5 + (brick->color - 1);
+}
 
 void UpdateStartMenu()
 {
@@ -417,8 +455,8 @@ void InitBricks()
     if (numCols % 2 == 0) numCols++; // ensure columns odd
 
     // Level-dependent color/tier richness
-    int highestTier = (level / 5 > 3) ? 3 : level / 5;
-    int highestColor = ((level % 5) + 3 > 5) ? 5 : (level % 5) + 3;
+    int highestTier = MIN(3, (int)floor(level / 5.0f));
+    int highestColor = MIN(3, level % 5 + 3);
 
     for (int y = 0; y < numRows; y++) {
 
@@ -464,7 +502,7 @@ void InitBricks()
                 tier = solidTier;
             }
 
-            int spriteIndex = (color - 1) * 4 + tier; // assuming 4 tiers per color
+            int spriteIndex = tier * 5 + (color - 1); // 5 colors (columns) × 4 tiers (rows) = 20 sprites
 
             bricks[brickCount++] = (Brick){
                 .x = bx,
@@ -476,6 +514,8 @@ void InitBricks()
                 .tier = tier,
                 .spriteIndex = spriteIndex
             };
+            TraceLog(LOG_DEBUG, "Brick %d → color=%d, tier=%d, spriteIndex=%d",
+                     brickCount, color, tier, spriteIndex);
         }
     }
 }
