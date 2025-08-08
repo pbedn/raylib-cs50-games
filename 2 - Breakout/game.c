@@ -30,6 +30,9 @@ int health;
 int score;
 int level;
 
+ParticleSystem ps;
+Texture2D particleTexture;
+
 // Resources
 Texture2D backgroundTexture;
 Texture2D mainTexture;
@@ -108,6 +111,7 @@ int main() {
     InitBall(&ball);
     InitBrickQuads();
     InitBricks();
+    InitParticleSystem(&ps, particleTexture, (Vector2){100, 100});
 
     srand(time(NULL));
     SetTargetFPS(60);
@@ -194,8 +198,10 @@ void UpdateDrawFrame(RenderTexture2D target)
 
         if (currentState == STATE_START)
             DrawStartMenu();
-        else if (currentState == STATE_PLAY)
+        else if (currentState == STATE_PLAY) {
             DrawGame();
+            DrawParticleSystem(&ps);
+        }
         else if (currentState == STATE_SERVE)
             DrawServe();
         else if (currentState == STATE_GAME_OVER)
@@ -253,10 +259,20 @@ void GameLogic(float dt)
             Rectangle brickRect = { bricks[i].x, bricks[i].y, bricks[i].width, bricks[i].height };
             if (CheckCollisionRecs(ballRect, brickRect)) {
                 HandleBallBrickCollision(&ball, &bricks[i]);
+
+                // Particle
+                ps.emitterPos = (Vector2){bricks[i].x + 16, bricks[i].y + 8};
+                Color startColor = (Color){0, 0, 255, 128}; // np. niebieski z alfa 128
+                Color endColor = (Color){0, 0, 255, 0};     // transparentny niebieski
+                    
+                EmitParticle(&ps, startColor, endColor, 64);
+
                 break; // tylko jedna kolizja w jednej klatce
             }
         }
     }
+
+    UpdateParticleSystem(&ps, dt);
 }
 
 void HandleBallPaddleCollision(Ball *ball, Paddle *playerPaddle)
@@ -465,8 +481,8 @@ void InitBricks()
 
         int alternateColor1 = GetRandomValue(1, highestColor);
         int alternateColor2 = GetRandomValue(1, highestColor);
-        int alternateTier1 = GetRandomValue(0, highestTier);
-        int alternateTier2 = GetRandomValue(0, highestTier);
+        int alternateTier1 = GetRandomValue(1, highestTier);
+        int alternateTier2 = GetRandomValue(1, highestTier);
 
         bool skipFlag = GetRandomValue(0, 1) == 1;
         bool alternateFlag = GetRandomValue(0, 1) == 1;
@@ -516,6 +532,62 @@ void InitBricks()
             };
             TraceLog(LOG_DEBUG, "Brick %d → color=%d, tier=%d, spriteIndex=%d",
                      brickCount, color, tier, spriteIndex);
+        }
+    }
+}
+
+void InitParticleSystem(ParticleSystem* ps, Texture2D texture, Vector2 emitterPos) {
+    ps->texture = texture;
+    ps->emitterPos = emitterPos;
+    ps->aliveCount = 0;
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        ps->particles[i].life = 0.0f;  // not active particles
+    }
+}
+
+void EmitParticle(ParticleSystem* ps, Color colorStart, Color colorEnd, int count) {
+    for (int i = 0; i < MAX_PARTICLES && count > 0; i++) {
+        if (ps->particles[i].life <= 0) {
+            ps->particles[i].position = ps->emitterPos;
+
+            // Waterfall effect
+            // ps->particles[i].velocity.x = GetRandomValue(-15, 15);
+            // ps->particles[i].velocity.y = GetRandomValue(0, 40);
+
+            // Round explosion
+            float angle = GetRandomValue(0, 360) * DEG2RAD;
+            float offsetRadius = GetRandomValue(0, 5); // up to 5px from center
+            float speed = GetRandomValue(30, 100) / 10.0f; // 3.0 – 10.0 px/s
+            ps->particles[i].velocity.x = cosf(angle) * speed * offsetRadius;
+            ps->particles[i].velocity.y = sinf(angle) * speed * offsetRadius;
+
+
+            ps->particles[i].life = ((float)GetRandomValue(5, 10)) / 10.0f; // 0.5 - 1 s
+            ps->particles[i].colorStart = colorStart;
+            ps->particles[i].colorEnd = colorEnd;
+            ps->particles[i].sizeStart = 1.0f;
+            ps->particles[i].sizeEnd = 0.0f;
+
+            ps->aliveCount++;
+            count--;
+        }
+    }
+}
+
+void UpdateParticleSystem(ParticleSystem* ps, float deltaTime) {
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        Particle* p = &ps->particles[i];
+        if (p->life > 0) {
+            p->life -= deltaTime;
+            if (p->life > 0) {
+                p->position.x += p->velocity.x * deltaTime;
+                p->position.y += p->velocity.y * deltaTime;
+
+                // gravity acceleration
+                p->velocity.y += 100 * deltaTime;  
+            } else {
+                ps->aliveCount--;
+            }
         }
     }
 }
@@ -628,6 +700,26 @@ void DrawBricks()
             (Vector2){ bricks[i].x, bricks[i].y },
             WHITE
         );
+        }
+    }
+}
+
+void DrawParticleSystem(ParticleSystem* ps) {
+    for (int i = 0; i < MAX_PARTICLES; i++) {
+        Particle* p = &ps->particles[i];
+        if (p->life > 0) {
+            float lifeRatio = p->life / 1.0f; // max life 1s
+
+            Color c = {
+                (unsigned char)(p->colorEnd.r + (p->colorStart.r - p->colorEnd.r) * lifeRatio),
+                (unsigned char)(p->colorEnd.g + (p->colorStart.g - p->colorEnd.g) * lifeRatio),
+                (unsigned char)(p->colorEnd.b + (p->colorStart.b - p->colorEnd.b) * lifeRatio),
+                (unsigned char)(p->colorEnd.a + (p->colorStart.a - p->colorEnd.a) * lifeRatio)
+            };
+
+            float size = p->sizeEnd + (p->sizeStart - p->sizeEnd) * lifeRatio;
+
+            DrawTextureEx(ps->texture, p->position, 0.0f, size, c);
         }
     }
 }

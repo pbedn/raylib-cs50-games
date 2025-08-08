@@ -98,4 +98,28 @@ void InitGameState(void);
 void HandleBallPaddleCollision(Ball *ball, Paddle *paddle);
 void HandleBallBrickCollision(Ball *ball, Brick *brick);
 
+typedef struct Particle {
+    Vector2 position;
+    Vector2 velocity;
+    float life;          //remaining life in seconds
+    Color colorStart;
+    Color colorEnd;
+    float sizeStart;
+    float sizeEnd;
+} Particle;
+
+#define MAX_PARTICLES 64
+
+typedef struct ParticleSystem {
+    Particle particles[MAX_PARTICLES];
+    int aliveCount;
+    Texture2D texture;
+    Vector2 emitterPos;
+} ParticleSystem;
+
+void InitParticleSystem(ParticleSystem* ps, Texture2D texture, Vector2 emitterPos);
+void EmitParticle(ParticleSystem* ps, Color colorStart, Color colorEnd, int count);
+void UpdateParticleSystem(ParticleSystem* ps, float deltaTime);
+void DrawParticleSystem(ParticleSystem* ps);
+
 #endif // GAME_H
