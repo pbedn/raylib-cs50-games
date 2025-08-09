@@ -59,6 +59,8 @@ Sound highScoreSound;
 Sound pauseSound;
 Music music;
 
+HighScore highScores[HIGH_SCORE_COUNT];
+
 int main() {
     SetTraceLogLevel(LOG_DEBUG);
 
@@ -105,6 +107,7 @@ int main() {
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);  // Texture scale filter to use
 
     InitGameState();
+    LoadHighScores();
     InitPaddleQuads();
     InitPaddle(&playerPaddle);
     InitBallQuads();
@@ -188,6 +191,9 @@ void UpdateDrawFrame(RenderTexture2D target)
             case STATE_VICTORY:
                 VictoryState();
                 break;
+            case STATE_HIGH_SCORES:
+                UpdateHighScores();
+                break;
         }
     }
 
@@ -211,6 +217,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawGameOver();
         else if (currentState == STATE_VICTORY)
             DrawVictory();
+        else if (currentState == STATE_HIGH_SCORES)
+            DrawHighScores();
 
         DrawFPSCustom();
     EndTextureMode();
@@ -283,6 +291,14 @@ void GameLogic(float dt)
     {
         PlaySound(victorySound);
         currentState = STATE_VICTORY;
+        return;
+    }
+
+    // Dev Mode for debugging
+    if (IsKeyPressed(KEY_B))
+    {
+        score = GetRandomValue(50, 500);
+        currentState = STATE_HIGH_SCORES;
         return;
     }
 }
@@ -374,6 +390,8 @@ void UpdateStartMenu()
         PlaySound(confirmSound);
         if (startMenu.highlighted == 1) {
             currentState = STATE_SERVE;
+        } else { // highlighted == 2
+            currentState = STATE_HIGH_SCORES;
         }
     }
 }
@@ -659,6 +677,15 @@ void VictoryState() {
     }
 }
 
+void UpdateHighScores(void)
+{
+    // Press Escape to return to the Start menu
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        PlaySound(wallHitSound);
+        currentState = STATE_START;
+    }
+}
+
 /* DRAW FUNCTIONS */
 
 void DrawFPSCustom()
@@ -837,3 +864,127 @@ void DrawVictory() {
     DrawTextEx(mediumFont, msg2, msg2Pos, 16, 1, WHITE);
 }
 
+void DrawHighScores(void)
+{
+    // Title
+    const char* title = "High Scores";
+    Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
+    Vector2 titlePos  = (Vector2){ (gameScreenWidth - titleSize.x)/2, 20 };
+    DrawTextEx(largeFont, title, titlePos, 32, 1, WHITE);
+
+    // List entries (1..10)
+    float baseY = 60.0f;
+    float lineH = 13.0f;
+
+    for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
+        // Left column: index (1-based)
+        const char* idx = TextFormat("%d.", i + 1);
+        DrawTextEx(mediumFont, idx,
+            (Vector2){ gameScreenWidth * 0.25f, baseY + (i+1)*lineH }, 16, 1, WHITE);
+
+        // Name (right-aligned in a small column)
+        const char* nm = (highScores[i].name[0]) ? highScores[i].name : "---";
+        Vector2 nmSize = MeasureTextEx(mediumFont, nm, 16, 1);
+        float nmRight = gameScreenWidth * 0.25f + 38.0f;  // mimic Lua layout
+        DrawTextEx(mediumFont, nm,
+            (Vector2){ nmRight - nmSize.x, baseY + (i+1)*lineH }, 16, 1, WHITE);
+
+        // Score (right-aligned in a wider column)
+        const char* sc = (highScores[i].score > 0) ? TextFormat("%d", highScores[i].score) : "---";
+        Vector2 scSize = MeasureTextEx(mediumFont, sc, 16, 1);
+        float scRight = gameScreenWidth * 0.5f + 100.0f; // mimic Lua: width=100 right-aligned
+        DrawTextEx(mediumFont, sc,
+            (Vector2){ scRight - scSize.x, baseY + (i+1)*lineH }, 16, 1, WHITE);
+    }
+
+    // Footer hint
+    const char* hint = "Press Escape to return to the main menu!";
+    Vector2 hintSize = MeasureTextEx(smallFont, hint, 8, 1);
+    Vector2 hintPos  = (Vector2){ (gameScreenWidth - hintSize.x)/2, gameScreenHeight - 18 };
+    DrawTextEx(smallFont, hint, hintPos, 8, 1, WHITE);
+}
+
+/* I/O FUNCTIONS */
+
+/* Initialize default scores in memory: CTO, 10000..1000 descending. */
+static void DefaultsHighScores(void) {
+    for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
+        highScores[i].name[0] = 'C';
+        highScores[i].name[1] = 'T';
+        highScores[i].name[2] = 'O';
+        highScores[i].name[3] = '\0';
+        highScores[i].score = (HIGH_SCORE_COUNT - i) * 1000; // 10000..1000
+    }
+}
+
+void LoadHighScores(void) {
+    const char* path = "breakout.lst";
+
+    if (!FileExists(path)) {
+        // Seed defaults and write a fresh file
+        DefaultsHighScores();
+        SaveHighScores();
+        return;
+    }
+
+    // Ensure table has at least 10 entries even if file is shorter
+    for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
+        strncpy(highScores[i].name, "---", sizeof(highScores[i].name));
+        highScores[i].name[sizeof(highScores[i].name) - 1] = '\0';
+        highScores[i].score = 0;
+    }
+
+    FILE* f = fopen(path, "r");
+    if (!f) { DefaultsHighScores(); return; }
+
+    // File format (Lua style): alternating lines NAME (3 chars) then SCORE
+    // Example:
+    // CTO
+    // 10000
+    // ...
+    char line[128];
+    int index = 0;
+    bool expectingName = true;
+
+    while (fgets(line, sizeof(line), f) != NULL && index < HIGH_SCORE_COUNT) {
+        // Strip trailing newline
+        size_t len = strlen(line);
+        if (len && (line[len-1] == '\n' || line[len-1] == '\r')) line[--len] = '\0';
+
+        if (expectingName) {
+            // Take first 3 chars (pad with '-')
+            char n0 = (len > 0) ? line[0] : '-';
+            char n1 = (len > 1) ? line[1] : '-';
+            char n2 = (len > 2) ? line[2] : '-';
+            highScores[index].name[0] = n0;
+            highScores[index].name[1] = n1;
+            highScores[index].name[2] = n2;
+            highScores[index].name[3] = '\0';
+        } else {
+            highScores[index].score = (int)strtol(line, NULL, 10);
+            index++;
+        }
+        expectingName = !expectingName;
+    }
+
+    fclose(f);
+}
+
+void SaveHighScores(void) {
+    const char* path = "breakout.lst";
+    FILE* f = fopen(path, "w");
+    if (!f) return;
+
+    // Write as alternating NAME and SCORE lines (matches Lua)
+    for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
+        // Always 3 letters (pad with '-')
+        char n0 = highScores[i].name[0] ? highScores[i].name[0] : '-';
+        char n1 = highScores[i].name[1] ? highScores[i].name[1] : '-';
+        char n2 = highScores[i].name[2] ? highScores[i].name[2] : '-';
+
+        fprintf(f, "%c%c%c\n", n0, n1, n2);
+        fprintf(f, "%d\n", highScores[i].score);
+    }
+
+    fclose(f);
+}

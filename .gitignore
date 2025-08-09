@@ -19,3 +19,6 @@ compile_commands.json
 *.exe
 *.out
 *.app
+
+# Game save files
+*.lst

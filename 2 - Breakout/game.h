@@ -33,6 +33,7 @@ typedef enum {
     STATE_SERVE,
     STATE_GAME_OVER,
     STATE_VICTORY,
+    STATE_HIGH_SCORES,
 } GameState;
 
 typedef struct {
@@ -99,6 +100,8 @@ void InitGameState(void);
 void HandleBallPaddleCollision(Ball *ball, Paddle *paddle);
 void HandleBallBrickCollision(Ball *ball, Brick *brick);
 
+/* --- Particles --- */
+
 typedef struct Particle {
     Vector2 position;
     Vector2 velocity;
@@ -123,8 +126,24 @@ void EmitParticle(ParticleSystem* ps, Color colorStart, Color colorEnd, int coun
 void UpdateParticleSystem(ParticleSystem* ps, float deltaTime);
 void DrawParticleSystem(ParticleSystem* ps);
 
+/* --- Victory --- */
+
 bool CheckVictory();
 void VictoryState();
 void DrawVictory();
+
+/* --- High Scores --- */
+
+#define HIGH_SCORE_COUNT 10
+
+typedef struct {
+    char name[4];  // 3 letters + '\0'
+    int score;
+} HighScore;
+
+void LoadHighScores(void);
+void SaveHighScores(void);
+void UpdateHighScores(void);
+void DrawHighScores(void);
 
 #endif // GAME_H
