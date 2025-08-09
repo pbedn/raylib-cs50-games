@@ -35,6 +35,7 @@ typedef enum {
     STATE_VICTORY,
     STATE_HIGH_SCORES,
     STATE_ENTER_HIGH_SCORE,
+    STATE_PADDLE_SELECT,
 } GameState;
 
 typedef struct {
@@ -148,5 +149,12 @@ void UpdateHighScores(void);
 void DrawHighScores(void);
 void UpdateEnterHighScore(void);
 void DrawEnterHighScore(void);
+
+/* --- Paddle Select --- */
+
+#define ARROW_SIZE 24
+
+void UpdatePaddleSelect(void);
+void DrawPaddleSelect(void);
 
 #endif // GAME_H

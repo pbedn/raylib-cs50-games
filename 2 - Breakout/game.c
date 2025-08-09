@@ -65,6 +65,8 @@ int newScore = 0;
 char nameChars[3] = { 'A', 'A', 'A' }; // Initial letters
 int highlightedChar = 0; // 0..2, which char is being edited
 
+int selectedPaddleSkin = 1;   // 1..4
+
 int main() {
     SetTraceLogLevel(LOG_DEBUG);
 
@@ -183,6 +185,9 @@ void UpdateDrawFrame(RenderTexture2D target)
             case STATE_START:
                 UpdateStartMenu();
                 break;
+            case STATE_PADDLE_SELECT:
+                UpdatePaddleSelect();
+                break;
             case STATE_SERVE:
                 ServeState(deltaTime);
                 break;
@@ -214,6 +219,8 @@ void UpdateDrawFrame(RenderTexture2D target)
 
         if (currentState == STATE_START)
             DrawStartMenu();
+        else if (currentState == STATE_PADDLE_SELECT)
+            DrawPaddleSelect();
         else if (currentState == STATE_PLAY) {
             DrawGame();
             DrawParticleSystem(&ps);
@@ -250,6 +257,7 @@ void InitGameState()
     level = 1;
     health = 3;
     score = 0;
+    selectedPaddleSkin = 1;
 }
 
 void GameLogic(float dt)
@@ -398,7 +406,7 @@ void UpdateStartMenu()
     if (IsKeyPressed(KEY_ENTER)) {
         PlaySound(confirmSound);
         if (startMenu.highlighted == 1) {
-            currentState = STATE_SERVE;
+            currentState = STATE_PADDLE_SELECT;
         } else { // highlighted == 2
             currentState = STATE_HIGH_SCORES;
         }
@@ -631,6 +639,46 @@ void UpdateParticleSystem(ParticleSystem* ps, float deltaTime) {
     }
 }
 
+void UpdatePaddleSelect(void)
+{
+    // Cycle skins with left/right, wrap around 1..4
+    if (IsKeyPressed(KEY_LEFT)) {
+        selectedPaddleSkin--;
+        if (selectedPaddleSkin < 1) selectedPaddleSkin = PADDLE_SKINS; // 4
+        PlaySound(selectSound);
+    }
+    if (IsKeyPressed(KEY_RIGHT)) {
+        selectedPaddleSkin++;
+        if (selectedPaddleSkin > PADDLE_SKINS) selectedPaddleSkin = 1;
+        PlaySound(selectSound);
+    }
+
+    // Confirm with Enter → apply selection and go to Serve
+    if (IsKeyPressed(KEY_ENTER)) {
+        PlaySound(confirmSound);
+
+        // Fresh run setup – you can tweak if you want to preserve prior state
+        level  = 1;
+        health = 3;
+        score  = 0;
+
+        InitPaddle(&playerPaddle);
+        playerPaddle.skin = selectedPaddleSkin;   // apply chosen skin
+        // Keep default size from InitPaddle() (size = 2). Adjust if desired.
+
+        InitBall(&ball);
+        InitBricks();
+
+        currentState = STATE_SERVE;
+    }
+
+    // Allow cancel back to the Start menu
+    if (IsKeyPressed(KEY_ESCAPE)) {
+        PlaySound(noSelectSound);
+        currentState = STATE_START;
+    }
+}
+
 void ServeState(float dt) {
     // Paddle movement
     UpdatePaddle(&playerPaddle, dt);
@@ -795,6 +843,58 @@ void DrawStartMenu()
 
     Color scoreColor = (startMenu.highlighted == 2) ? (Color){103, 255, 255, 255} : WHITE;
     DrawTextEx(mediumFont, scoreText, (Vector2){scoreX, scoreY}, 16, 1, scoreColor);
+}
+
+void DrawPaddleSelect(void)
+{
+    // Title
+    const char* title = "Select Paddle";
+    Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
+    DrawTextEx(largeFont, title,
+               (Vector2){ (gameScreenWidth - titleSize.x)/2, 28 },
+               32, 1, WHITE);
+
+    // Instructions
+    const char* hint = "Use Left/Right to choose, Enter to start";
+    Vector2 hintSize = MeasureTextEx(mediumFont, hint, 16, 1);
+    DrawTextEx(mediumFont, hint,
+               (Vector2){ (gameScreenWidth - hintSize.x)/2, 60 },
+               16, 1, WHITE);
+
+    // Arrow sprites (assumes 24×24 each, side-by-side in arrows.png)
+    Rectangle leftArrow  = (Rectangle){ 0, 0, ARROW_SIZE, ARROW_SIZE };
+    Rectangle rightArrow = (Rectangle){ ARROW_SIZE, 0, ARROW_SIZE, ARROW_SIZE };
+
+    // Layout
+    float centerY = gameScreenHeight * 0.60f;      // preview row
+    float centerX = gameScreenWidth  * 0.50f;
+    float arrowOffsetX = 70.0f;
+
+    // Draw left arrow
+    DrawTextureRec(arrowsTexture, leftArrow,
+                   (Vector2){ centerX - arrowOffsetX - ARROW_SIZE/2, centerY - ARROW_SIZE/2 }, WHITE);
+
+    // Draw right arrow
+    DrawTextureRec(arrowsTexture, rightArrow,
+                   (Vector2){ centerX + arrowOffsetX - ARROW_SIZE/2, centerY - ARROW_SIZE/2 }, WHITE);
+
+    // Preview paddle: reuse DrawPaddle with a local preview object so we don't disturb the in-game one
+    Paddle preview = playerPaddle;
+    preview.skin = selectedPaddleSkin;
+    preview.size = 2;  // keep medium for preview (matches InitPaddle)
+    preview.width  = paddleQuads[(preview.size - 1) + 4 * (preview.skin - 1)].width;
+    preview.height = paddleQuads[(preview.size - 1) + 4 * (preview.skin - 1)].height;
+    preview.x = centerX - preview.width / 2;
+    preview.y = centerY - preview.height / 2;
+
+    DrawPaddle(&preview);
+
+    // Label the chosen skin for clarity (optional)
+    const char* skinLabel = TextFormat("Skin: %d / %d", selectedPaddleSkin, PADDLE_SKINS);
+    Vector2 labSize = MeasureTextEx(smallFont, skinLabel, 8, 1);
+    DrawTextEx(smallFont, skinLabel,
+               (Vector2){ (gameScreenWidth - labSize.x)/2, centerY + 24 },
+               8, 1, WHITE);
 }
 
 void DrawGame()
