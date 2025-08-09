@@ -60,6 +60,10 @@ Sound pauseSound;
 Music music;
 
 HighScore highScores[HIGH_SCORE_COUNT];
+int newHighScoreIndex = -1; // Position where the new score will go
+int newScore = 0;
+char nameChars[3] = { 'A', 'A', 'A' }; // Initial letters
+int highlightedChar = 0; // 0..2, which char is being edited
 
 int main() {
     SetTraceLogLevel(LOG_DEBUG);
@@ -194,6 +198,9 @@ void UpdateDrawFrame(RenderTexture2D target)
             case STATE_HIGH_SCORES:
                 UpdateHighScores();
                 break;
+            case STATE_ENTER_HIGH_SCORE:
+                UpdateEnterHighScore();
+                break;
         }
     }
 
@@ -219,6 +226,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawVictory();
         else if (currentState == STATE_HIGH_SCORES)
             DrawHighScores();
+        else if (currentState == STATE_ENTER_HIGH_SCORE)
+            DrawEnterHighScore();
 
         DrawFPSCustom();
     EndTextureMode();
@@ -298,7 +307,7 @@ void GameLogic(float dt)
     if (IsKeyPressed(KEY_B))
     {
         score = GetRandomValue(50, 500);
-        currentState = STATE_HIGH_SCORES;
+        currentState = STATE_GAME_OVER;
         return;
     }
 }
@@ -642,13 +651,33 @@ void ServeState(float dt) {
 void GameOverState()
 {
     if (IsKeyPressed(KEY_ENTER)) {
-        // Reset game state to initial values
-        health = 3;
-        score = 0;
-        InitPaddle(&playerPaddle);
-        InitBall(&ball);
-        level++; InitBricks();
-        currentState = STATE_START;
+        // Determine if score is in top 10
+        newHighScoreIndex = -1;
+        for (int i = 0; i < HIGH_SCORE_COUNT; i++) {
+            if (score > highScores[i].score) {
+                newHighScoreIndex = i;
+                break;
+            }
+        }
+
+        if (newHighScoreIndex != -1) {
+            // Store score for entry state
+            newScore = score;
+            nameChars[0] = 'A';
+            nameChars[1] = 'A';
+            nameChars[2] = 'A';
+            highlightedChar = 0;
+            currentState = STATE_ENTER_HIGH_SCORE;
+        } else {
+            // No high score, return to start
+            health = 3;
+            score = 0;
+            InitPaddle(&playerPaddle);
+            InitBall(&ball);
+            level = 1;
+            InitBricks();
+            currentState = STATE_START;
+        }
     }
 }
 
@@ -683,6 +712,51 @@ void UpdateHighScores(void)
     if (IsKeyPressed(KEY_ESCAPE)) {
         PlaySound(wallHitSound);
         currentState = STATE_START;
+    }
+}
+
+void UpdateEnterHighScore(void)
+{
+    // Move between characters
+    if (IsKeyPressed(KEY_LEFT)) {
+        highlightedChar = (highlightedChar - 1 + 3) % 3;
+        PlaySound(paddleHitSound);
+    }
+    if (IsKeyPressed(KEY_RIGHT)) {
+        highlightedChar = (highlightedChar + 1) % 3;
+        PlaySound(paddleHitSound);
+    }
+
+    // Change character letter
+    if (IsKeyPressed(KEY_UP)) {
+        nameChars[highlightedChar]++;
+        if (nameChars[highlightedChar] > 'Z') nameChars[highlightedChar] = 'A';
+        PlaySound(paddleHitSound);
+    }
+    if (IsKeyPressed(KEY_DOWN)) {
+        nameChars[highlightedChar]--;
+        if (nameChars[highlightedChar] < 'A') nameChars[highlightedChar] = 'Z';
+        PlaySound(paddleHitSound);
+    }
+
+    // Confirm name entry
+    if (IsKeyPressed(KEY_ENTER)) {
+        // Shift lower scores down to make room
+        for (int i = HIGH_SCORE_COUNT - 1; i > newHighScoreIndex; i--) {
+            highScores[i] = highScores[i - 1];
+        }
+
+        // Insert new score and name
+        highScores[newHighScoreIndex].name[0] = nameChars[0];
+        highScores[newHighScoreIndex].name[1] = nameChars[1];
+        highScores[newHighScoreIndex].name[2] = nameChars[2];
+        highScores[newHighScoreIndex].name[3] = '\0';
+        highScores[newHighScoreIndex].score = newScore;
+
+        SaveHighScores();
+
+        // Go to high scores view
+        currentState = STATE_HIGH_SCORES;
     }
 }
 
@@ -869,51 +943,88 @@ void DrawHighScores(void)
     // Title
     const char* title = "High Scores";
     Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
-    Vector2 titlePos  = (Vector2){ (gameScreenWidth - titleSize.x)/2, 20 };
-    DrawTextEx(largeFont, title, titlePos, 32, 1, WHITE);
+    DrawTextEx(largeFont, title,
+               (Vector2){ (gameScreenWidth - titleSize.x)/2, 20 },
+               32, 1, WHITE);
 
-    // List entries (1..10)
+    // Layout constants (original style)
     float baseY = 60.0f;
     float lineH = 13.0f;
+    float fixedExtraGap = 8.0f; // space after index, regardless of its width
 
     for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
-        // Left column: index (1-based)
+        float y = baseY + (i+1)*lineH;
+
+        // Index (1-based)
         const char* idx = TextFormat("%d.", i + 1);
-        DrawTextEx(mediumFont, idx,
-            (Vector2){ gameScreenWidth * 0.25f, baseY + (i+1)*lineH }, 16, 1, WHITE);
+        Vector2 idxSize = MeasureTextEx(mediumFont, idx, 16, 1);
+        float idxX = gameScreenWidth * 0.25f;
+        DrawTextEx(mediumFont, idx, (Vector2){ idxX, y }, 16, 1, WHITE);
 
-        // Name (right-aligned in a small column)
+        // Name (starts after index width + fixedExtraGap)
         const char* nm = (highScores[i].name[0]) ? highScores[i].name : "---";
-        Vector2 nmSize = MeasureTextEx(mediumFont, nm, 16, 1);
-        float nmRight = gameScreenWidth * 0.25f + 38.0f;  // mimic Lua layout
-        DrawTextEx(mediumFont, nm,
-            (Vector2){ nmRight - nmSize.x, baseY + (i+1)*lineH }, 16, 1, WHITE);
+        float nameX = idxX + idxSize.x + fixedExtraGap;
+        DrawTextEx(mediumFont, nm, (Vector2){ nameX, y }, 16, 1, WHITE);
 
-        // Score (right-aligned in a wider column)
+        // Score (right-aligned to 100px column starting at 0.5*width)
         const char* sc = (highScores[i].score > 0) ? TextFormat("%d", highScores[i].score) : "---";
         Vector2 scSize = MeasureTextEx(mediumFont, sc, 16, 1);
-        float scRight = gameScreenWidth * 0.5f + 100.0f; // mimic Lua: width=100 right-aligned
+        float scRight = gameScreenWidth * 0.5f + 100.0f;
         DrawTextEx(mediumFont, sc,
-            (Vector2){ scRight - scSize.x, baseY + (i+1)*lineH }, 16, 1, WHITE);
+            (Vector2){ scRight - scSize.x, y },
+            16, 1, WHITE);
     }
 
-    // Footer hint
+    // Footer
     const char* hint = "Press Escape to return to the main menu!";
     Vector2 hintSize = MeasureTextEx(smallFont, hint, 8, 1);
-    Vector2 hintPos  = (Vector2){ (gameScreenWidth - hintSize.x)/2, gameScreenHeight - 18 };
-    DrawTextEx(smallFont, hint, hintPos, 8, 1, WHITE);
+    DrawTextEx(smallFont, hint,
+               (Vector2){ (gameScreenWidth - hintSize.x)/2, gameScreenHeight - 18 },
+               8, 1, WHITE);
+}
+
+void DrawEnterHighScore(void)
+{
+    const char* title = "New High Score!";
+    Vector2 titleSize = MeasureTextEx(largeFont, title, 32, 1);
+    DrawTextEx(largeFont, title,
+               (Vector2){ (gameScreenWidth - titleSize.x) / 2, 20 },
+               32, 1, WHITE);
+
+    const char* scoreText = TextFormat("Your Score: %d", newScore);
+    Vector2 scoreSize = MeasureTextEx(mediumFont, scoreText, 16, 1);
+    DrawTextEx(mediumFont, scoreText,
+               (Vector2){ (gameScreenWidth - scoreSize.x) / 2, 70 },
+               16, 1, WHITE);
+
+    // Draw name letters
+    float startX = gameScreenWidth / 2 - 30;
+    for (int i = 0; i < 3; i++) {
+        Color color = (i == highlightedChar) ? YELLOW : WHITE;
+        char letterStr[2] = { nameChars[i], '\0' };
+        Vector2 letterSize = MeasureTextEx(largeFont, letterStr, 32, 1);
+        DrawTextEx(largeFont, letterStr,
+                   (Vector2){ startX + i * 30, 120 },
+                   32, 1, color);
+    }
+
+    const char* hint = "Use arrow keys to set name, Enter to confirm";
+    Vector2 hintSize = MeasureTextEx(smallFont, hint, 8, 1);
+    DrawTextEx(smallFont, hint,
+               (Vector2){ (gameScreenWidth - hintSize.x) / 2, gameScreenHeight - 20 },
+               8, 1, WHITE);
 }
 
 /* I/O FUNCTIONS */
 
-/* Initialize default scores in memory: CTO, 10000..1000 descending. */
+/* Initialize default scores in memory: CTO, 100..10 descending. */
 static void DefaultsHighScores(void) {
     for (int i = 0; i < HIGH_SCORE_COUNT; ++i) {
         highScores[i].name[0] = 'C';
         highScores[i].name[1] = 'T';
         highScores[i].name[2] = 'O';
         highScores[i].name[3] = '\0';
-        highScores[i].score = (HIGH_SCORE_COUNT - i) * 1000; // 10000..1000
+        highScores[i].score = (HIGH_SCORE_COUNT - i) * 10;
     }
 }
 

@@ -34,6 +34,7 @@ typedef enum {
     STATE_GAME_OVER,
     STATE_VICTORY,
     STATE_HIGH_SCORES,
+    STATE_ENTER_HIGH_SCORE,
 } GameState;
 
 typedef struct {
@@ -145,5 +146,7 @@ void LoadHighScores(void);
 void SaveHighScores(void);
 void UpdateHighScores(void);
 void DrawHighScores(void);
+void UpdateEnterHighScore(void);
+void DrawEnterHighScore(void);
 
 #endif // GAME_H
