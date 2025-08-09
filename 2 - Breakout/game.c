@@ -185,6 +185,9 @@ void UpdateDrawFrame(RenderTexture2D target)
             case STATE_GAME_OVER:
                 GameOverState();
                 break;
+            case STATE_VICTORY:
+                VictoryState();
+                break;
         }
     }
 
@@ -206,6 +209,8 @@ void UpdateDrawFrame(RenderTexture2D target)
             DrawServe();
         else if (currentState == STATE_GAME_OVER)
             DrawGameOver();
+        else if (currentState == STATE_VICTORY)
+            DrawVictory();
 
         DrawFPSCustom();
     EndTextureMode();
@@ -273,6 +278,13 @@ void GameLogic(float dt)
     }
 
     UpdateParticleSystem(&ps, dt);
+
+    if (CheckVictory() or IsKeyPressed(KEY_V))
+    {
+        PlaySound(victorySound);
+        currentState = STATE_VICTORY;
+        return;
+    }
 }
 
 void HandleBallPaddleCollision(Ball *ball, Paddle *playerPaddle)
@@ -622,6 +634,31 @@ void GameOverState()
     }
 }
 
+bool CheckVictory() {
+    for (int i = 0; i < brickCount; ++i)
+    {
+        if (bricks[i].inPlay)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+void VictoryState() {
+    UpdatePaddle(&playerPaddle, GetFrameTime());
+
+    // Ball tracks paddle
+    ball.x = playerPaddle.x + (playerPaddle.width / 2) - (ball.width / 2);
+    ball.y = playerPaddle.y - ball.height;
+
+    if (IsKeyPressed(KEY_ENTER)) {
+        level++;
+        InitBricks();  // create new level-dependent map
+        currentState = STATE_SERVE;
+    }
+}
+
 /* DRAW FUNCTIONS */
 
 void DrawFPSCustom()
@@ -771,3 +808,32 @@ void DrawGameOver()
     DrawTextEx(mediumFont, msg2,(Vector2){centerX - MeasureText(msg2, 20)/2, y2}, 16, 1, WHITE);
     DrawTextEx(mediumFont, msg3,(Vector2){centerX - MeasureText(msg3, 20)/2, y3}, 16, 1, WHITE);
 }
+
+void DrawVictory() {
+    DrawPaddle(&playerPaddle);
+    DrawBall(&ball);
+    DrawBricks();
+    DrawHealth();
+
+    Vector2 scorePosition = {gameScreenWidth - 60, 5};
+    DrawTextEx(smallFont, TextFormat("Score: %d", score), scorePosition, 8, 1, WHITE);
+
+    // Message 1: "Level X Complete!"
+    const char* msg1 = TextFormat("Level %d Complete!", level);
+    Vector2 msg1Size = MeasureTextEx(largeFont, msg1, 32, 1);
+    Vector2 msg1Pos = {
+        (gameScreenWidth - msg1Size.x) / 2,
+        gameScreenHeight / 4
+    };
+    DrawTextEx(largeFont, msg1, msg1Pos, 32, 1, WHITE);
+
+    // Message 2: "Press Enter to serve!"
+    const char* msg2 = "Press Enter to serve!";
+    Vector2 msg2Size = MeasureTextEx(mediumFont, msg2, 16, 1);
+    Vector2 msg2Pos = {
+        (gameScreenWidth - msg2Size.x) / 2,
+        gameScreenHeight / 2
+    };
+    DrawTextEx(mediumFont, msg2, msg2Pos, 16, 1, WHITE);
+}
+

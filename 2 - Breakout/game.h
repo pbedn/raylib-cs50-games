@@ -32,6 +32,7 @@ typedef enum {
     STATE_PLAY,
     STATE_SERVE,
     STATE_GAME_OVER,
+    STATE_VICTORY,
 } GameState;
 
 typedef struct {
@@ -121,5 +122,9 @@ void InitParticleSystem(ParticleSystem* ps, Texture2D texture, Vector2 emitterPo
 void EmitParticle(ParticleSystem* ps, Color colorStart, Color colorEnd, int count);
 void UpdateParticleSystem(ParticleSystem* ps, float deltaTime);
 void DrawParticleSystem(ParticleSystem* ps);
+
+bool CheckVictory();
+void VictoryState();
+void DrawVictory();
 
 #endif // GAME_H
