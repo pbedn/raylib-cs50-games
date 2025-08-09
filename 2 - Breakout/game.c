@@ -106,7 +106,7 @@ int main() {
 
     // Start music
     SetMusicVolume(music, 0.25f);
-    // PlayMusicStream(music);
+    PlayMusicStream(music);
 
     // Render texture initialization, used to hold the rendering result so we can easily resize it
     RenderTexture2D target = LoadRenderTexture(gameScreenWidth, gameScreenHeight);
