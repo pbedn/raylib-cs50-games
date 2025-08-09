@@ -31,7 +31,6 @@ int score;
 int level;
 
 ParticleSystem ps;
-Texture2D particleTexture;
 
 // Resources
 Texture2D backgroundTexture;
@@ -991,8 +990,8 @@ void DrawServe()
 
     // Draw serve message
     const char* msg = "Press Enter to serve!";
-    int textWidth = MeasureText(msg, 20);
-    Vector2 position = {(gameScreenWidth - textWidth) / 2, gameScreenHeight / 2};
+    Vector2 size = MeasureTextEx(mediumFont, msg, 16, 1);
+    Vector2 position = { (gameScreenWidth - size.x) / 2.0f, gameScreenHeight / 2.0f };
     DrawTextEx(mediumFont, msg, position, 16, 1, WHITE);
 }
 
@@ -1102,7 +1101,6 @@ void DrawEnterHighScore(void)
     for (int i = 0; i < 3; i++) {
         Color color = (i == highlightedChar) ? YELLOW : WHITE;
         char letterStr[2] = { nameChars[i], '\0' };
-        Vector2 letterSize = MeasureTextEx(largeFont, letterStr, 32, 1);
         DrawTextEx(largeFont, letterStr,
                    (Vector2){ startX + i * 30, 120 },
                    32, 1, color);
