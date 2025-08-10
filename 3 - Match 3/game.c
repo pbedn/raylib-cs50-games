@@ -429,7 +429,9 @@ typedef struct StartData {
     int item;        // 1: Start, 2: Quit
     bool locked;
     float fade;      // 0..1 white fade
+    Board previewBoard; // board shown on main menu
 } StartData;
+
 
 typedef struct BeginData {
     int level;
@@ -470,9 +472,24 @@ static void Play_EnableInput(void *ud);
 // ---------- Start ----------
 static void Start_enter(State *s, void *p) { (void)p;
     StartData *st = (StartData*)s->data;
-    st->item = 1; st->locked = false; st->fade = 0.0f;
+    st->item = 1; 
+    st->locked = false; 
+    st->fade = 0.0f;
+
+    // Setup preview board
+    st->previewBoard.offsetX = 180; // position so it appears centered under title/menu
+    st->previewBoard.offsetY = 170;
+    Board_FillFresh(&st->previewBoard);
 }
-static void Start_exit(State *s){ (void)s; }
+
+static void Start_exit(State *s){
+    StartData *st = (StartData*)s->data;
+    for (int y = 0; y < BOARD_ROWS; ++y)
+        for (int x = 0; x < BOARD_COLS; ++x)
+            if (st->previewBoard.cells[y][x])
+                FreeTile(st->previewBoard.cells[y][x]);
+}
+
 static void Start_update(State *s, float dt) {
     (void)dt;
     StartData *st = (StartData*)s->data;
@@ -489,18 +506,58 @@ static void Start_update(State *s, float dt) {
         }
     }
 }
+
 static void Start_render(State *s) {
     StartData *st = (StartData*)s->data;
+
+    // 1. Draw background pattern
     DrawBackground();
-    DrawTextEx(gTS.fontLarge, "MATCH 3", (Vector2){ 162, 60 }, gTS.fontLarge.baseSize, 0, WHITE);
-    const char *opt1 = st->item==1 ? "> START" : "  START";
-    const char *opt2 = st->item==2 ? "> QUIT " : "  QUIT ";
-    DrawTextEx(gTS.fontMedium, opt1, (Vector2){ 210, 140 }, gTS.fontMedium.baseSize, 0, WHITE);
-    DrawTextEx(gTS.fontMedium, opt2, (Vector2){ 210, 170 }, gTS.fontMedium.baseSize, 0, WHITE);
+
+    // 2. Draw full board in center
+    st->previewBoard.offsetX = (VIRTUAL_W - BOARD_COLS * TILE_SIZE) / 2;
+    st->previewBoard.offsetY = (VIRTUAL_H - BOARD_ROWS * TILE_SIZE) / 2;
+    Board_Draw(&st->previewBoard);
+
+    // 3. Dim overlay over board for better text visibility
+    DrawRectangle(0, 0, VIRTUAL_W, VIRTUAL_H, (Color){0, 0, 0, 150});
+
+    // 4. Title panel (slightly more opaque)
+    int titleW = 200;
+    int titleH = 40;
+    int titleX = (VIRTUAL_W - titleW) / 2;
+    int titleY = 60;
+    DrawRectangle(titleX, titleY, titleW, titleH, (Color){255, 255, 255, 180});
+
+    const char *title = "MATCH 3";
+    Vector2 ts = MeasureTextEx(gTS.fontLarge, title, gTS.fontLarge.baseSize, 0);
+    DrawTextEx(
+        gTS.fontLarge, title,
+        (Vector2){(VIRTUAL_W - ts.x) / 2, titleY + (titleH - ts.y) / 2},
+        gTS.fontLarge.baseSize, 0,
+        WHITE
+    );
+
+    // 5. Menu panel (slightly more opaque)
+    int menuW = 200;
+    int menuH = 60;
+    int menuX = (VIRTUAL_W - menuW) / 2;
+    int menuY = titleY + titleH + 20;
+    DrawRectangle(menuX, menuY, menuW, menuH, (Color){255, 255, 255, 180});
+
+    const char *opt1 = st->item == 1 ? "> Start" : "  Start";
+    const char *opt2 = st->item == 2 ? "> Quit Game" : "  Quit Game";
+    DrawTextEx(gTS.fontMedium, opt1, (Vector2){menuX + 40, menuY + 8}, gTS.fontMedium.baseSize, 0, WHITE);
+    DrawTextEx(gTS.fontMedium, opt2, (Vector2){menuX + 40, menuY + 32}, gTS.fontMedium.baseSize, 0, WHITE);
+
+    // 6. Fade when starting
     if (st->fade > 0.0f) {
-        DrawRectangle(0,0,VIRTUAL_W,VIRTUAL_H, (Color){ 255,255,255,(unsigned char)(st->fade*255) });
+        DrawRectangle(0, 0, VIRTUAL_W, VIRTUAL_H, (Color){255, 255, 255, (unsigned char)(st->fade * 255)});
     }
 }
+
+
+
+
 
 // ---------- Begin ----------
 static void Begin_enter(State *s, void *p) {
@@ -624,16 +681,24 @@ static void OnSwapTweenFinished(void *ud) {
 
             Tile *A = ctx->b->cells[ay][ax];
             Tile *B = ctx->b->cells[by][bx];
-            A->gridX = ps->aGX; A->gridY = ps->aGY; A->x = (A->gridX-1)*TILE_SIZE; A->y = (A->gridY-1)*TILE_SIZE;
-            B->gridX = ps->bGX; B->gridY = ps->bGY; B->x = (B->gridX-1)*TILE_SIZE; B->y = (B->gridY-1)*TILE_SIZE;
+            A->gridX = ps->aGX; A->gridY = ps->aGY;
+            A->x = (A->gridX - 1) * TILE_SIZE;
+            A->y = (A->gridY - 1) * TILE_SIZE;
+            B->gridX = ps->bGX; B->gridY = ps->bGY;
+            B->x = (B->gridX - 1) * TILE_SIZE;
+            B->y = (B->gridY - 1) * TILE_SIZE;
 
             ps->swapLogicalDone = true;
         }
         ps->swapping = false;
+
+        // FIX: Trigger match resolution immediately
         ps->resolving = true;
+
         free(ctx);
     }
 }
+
 
 static inline int manhattan(int ax, int ay, int bx, int by) {
     return abs(ax - bx) + abs(ay - by);
@@ -775,38 +840,55 @@ static void Play_update(State *s, float dt) {
 
 static void Play_render(State *s) {
     PlayData *ps = (PlayData*)s->data;
+
+    // Background
     DrawBackground();
 
-    // HUD panel (left side)
-    DrawRectangle(16,16,186,116,(Color){56,56,56,234});
-    DrawTextEx(gTS.fontMedium, TextFormat("Level: %d", ps->level), (Vector2){20,24},  gTS.fontMedium.baseSize, 0, (Color){99,155,255,255});
-    DrawTextEx(gTS.fontMedium, TextFormat("Score: %d", ps->score), (Vector2){20,52},  gTS.fontMedium.baseSize, 0, (Color){99,155,255,255});
-    DrawTextEx(gTS.fontMedium, TextFormat("Goal : %d", ps->goal),  (Vector2){20,80},  gTS.fontMedium.baseSize, 0, (Color){99,155,255,255});
-    DrawTextEx(gTS.fontMedium, TextFormat("Timer: %d", ps->timer), (Vector2){20,108}, gTS.fontMedium.baseSize, 0, (Color){99,155,255,255});
+    // HUD panel (left side, taller and narrower per screenshot)
+    int hudX = 10;
+    int hudY = 10;
+    int hudW = 180;
+    int hudH = VIRTUAL_H - 20;
+    DrawRectangle(hudX, hudY, hudW, hudH, (Color){56, 56, 56, 234});
+    DrawRectangleLines(hudX, hudY, hudW, hudH, (Color){255, 255, 255, 200});
 
-    // Board backdrop and offsets (moved right)
-    int bx = BOARD_OFFSET_X - 4;
-    int by = BOARD_OFFSET_Y - 4;
-    DrawRectangle(bx, by, BOARD_COLS*TILE_SIZE + 8, BOARD_ROWS*TILE_SIZE + 8, (Color){0,0,0,80});
+    // HUD text
+    int textX = hudX + 12;
+    int textY = hudY + 12;
+    int lineSpacing = 28;
+    DrawTextEx(gTS.fontMedium, TextFormat("Level: %d", ps->level), (Vector2){textX, textY}, gTS.fontMedium.baseSize, 0, (Color){99, 155, 255, 255});
+    textY += lineSpacing;
+    DrawTextEx(gTS.fontMedium, TextFormat("Score: %d", ps->score), (Vector2){textX, textY}, gTS.fontMedium.baseSize, 0, (Color){99, 155, 255, 255});
+    textY += lineSpacing;
+    DrawTextEx(gTS.fontMedium, TextFormat("Goal : %d", ps->goal),  (Vector2){textX, textY}, gTS.fontMedium.baseSize, 0, (Color){99, 155, 255, 255});
+    textY += lineSpacing;
+    DrawTextEx(gTS.fontMedium, TextFormat("Timer: %d", ps->timer), (Vector2){textX, textY}, gTS.fontMedium.baseSize, 0, (Color){99, 155, 255, 255});
 
-    ps->board.offsetX = BOARD_OFFSET_X;
-    ps->board.offsetY = BOARD_OFFSET_Y;
+    // Board backdrop
+    int boardX = hudX + hudW + 16;
+    int boardY = 20;
+    DrawRectangle(boardX - 4, boardY - 4, BOARD_COLS * TILE_SIZE + 8, BOARD_ROWS * TILE_SIZE + 8, (Color){0, 0, 0, 80});
+
+    // Draw board
+    ps->board.offsetX = boardX;
+    ps->board.offsetY = boardY;
     Board_Draw(&ps->board);
 
     // Cursor highlight (blinking)
     if (ps->blinking) {
-        int rx = ps->board.offsetX + (ps->curGX - 1)*TILE_SIZE - 2;
-        int ry = ps->board.offsetY + (ps->curGY - 1)*TILE_SIZE - 2;
-        DrawRectangleLinesEx((Rectangle){ rx, ry, TILE_SIZE + 4, TILE_SIZE + 4 }, 2, (Color){255,255,255,220});
+        int rx = ps->board.offsetX + (ps->curGX - 1) * TILE_SIZE - 2;
+        int ry = ps->board.offsetY + (ps->curGY - 1) * TILE_SIZE - 2;
+        DrawRectangleLinesEx((Rectangle){rx, ry, TILE_SIZE + 4, TILE_SIZE + 4}, 2, (Color){255, 255, 255, 220});
     }
 
-    // Selected tile highlight (persistent, distinct style)
+    // Selected tile highlight
     if (ps->hasSelection) {
-        int sx = ps->board.offsetX + (ps->selGX - 1)*TILE_SIZE - 3;
-        int sy = ps->board.offsetY + (ps->selGY - 1)*TILE_SIZE - 3;
-        DrawRectangleLinesEx((Rectangle){ sx, sy, TILE_SIZE + 6, TILE_SIZE + 6 }, 3, (Color){255, 223, 0, 230});
+        int sx = ps->board.offsetX + (ps->selGX - 1) * TILE_SIZE - 3;
+        int sy = ps->board.offsetY + (ps->selGY - 1) * TILE_SIZE - 3;
+        DrawRectangleLinesEx((Rectangle){sx, sy, TILE_SIZE + 6, TILE_SIZE + 6}, 3, (Color){255, 223, 0, 230});
     }
 }
+
 
 
 // ---------- Over ----------
