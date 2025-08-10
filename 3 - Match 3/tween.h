@@ -1,16 +1,17 @@
 // tween.h
-// Minimal header-only tween/Timer system for Raylib projects.
-// Mirrors the idea of Knife.timer's Timer.tween (linear easing).
-// - Create a Tween with duration
-// - Add properties (float*) with their target values
-// - Start it (captures initial values)
-// - Call Tween_UpdateAll(dt) each frame
-// - Optional: on_finish callback
+// Header-only Tween & Timer.after utilities for Raylib projects.
+// Stage: Tween — with common easings and "after" scheduler.
+// Public API (summary):
+//   - Tween_InitSystem(), Tween_UpdateAll(dt), Tween_ClearAll()
+//   - Tween_Create(duration), Tween_Add(tw, &var, final), Tween_Start(tw)
+//   - Tween_SetEase(tw, fn), Tween_OnFinish(tw, cb, user)
+//   - Easing functions: Tween_EaseLinear, Tween_EaseInQuad, Tween_EaseOutQuad,
+//                      Tween_EaseInOutQuad, Tween_EaseOutBack
+//   - Timer_After(delay, cb, user)   // like Knife.timer.after
 //
 // Notes:
-// * Uses a fixed-size pool (no malloc) for predictability.
-// * Linear easing only; we'll add easings/sequencing later.
-// * All values are float-based (sufficient for positions/alpha/scales).
+// * Fixed-size pools (no malloc).
+// * All animated properties are float-based.
 
 #ifndef TWEEN_H
 #define TWEEN_H
@@ -22,7 +23,7 @@
 extern "C" {
 #endif
 
-// --- Configuration ---
+// ---------- Configuration ----------
 #ifndef TWEEN_MAX_TWEENS
 #define TWEEN_MAX_TWEENS 2048
 #endif
@@ -31,6 +32,11 @@ extern "C" {
 #define TWEEN_MAX_TASKS_PER_TWEEN 8
 #endif
 
+#ifndef TIMER_MAX_AFTER_JOBS
+#define TIMER_MAX_AFTER_JOBS 1024
+#endif
+
+// ---------- Types ----------
 typedef float (*TweenEaseFn)(float t, float b, float c, float d);
 typedef void  (*TweenFinishFn)(void *user);
 
@@ -41,12 +47,11 @@ typedef struct {
     float  change;
 } TweenTask;
 
-// A tween animates multiple properties over 'duration'
 typedef struct {
     bool   active;
     float  duration;
     float  elapsed;
-    TweenEaseFn ease;     // easing function (linear for now)
+    TweenEaseFn ease;     // easing function
     TweenFinishFn on_finish;
     void  *on_finish_ud;
 
@@ -54,54 +59,86 @@ typedef struct {
     TweenTask tasks[TWEEN_MAX_TASKS_PER_TWEEN];
 } Tween;
 
-// --- Public API ---
-
-// Call once on startup (resets pool).
-void Tween_InitSystem(void);
-
-// Create a tween with given duration (seconds). Returns pointer or NULL if pool full.
+// ---------- Public API (tweening) ----------
+void   Tween_InitSystem(void);
 Tween* Tween_Create(float duration);
+bool   Tween_Add(Tween *tw, float *target, float final_value);
+void   Tween_SetEase(Tween *tw, TweenEaseFn ease);
+void   Tween_OnFinish(Tween *tw, TweenFinishFn fn, void *user);
+bool   Tween_Start(Tween *tw);
+void   Tween_UpdateAll(float dt);
+void   Tween_ClearAll(void);
 
-// Add a property to tween from current (*target) to 'final_value'.
-// Must be called before Tween_Start.
-bool Tween_Add(Tween *tw, float *target, float final_value);
+// ---------- Easing helpers ----------
+float Tween_EaseLinear   (float t, float b, float c, float d);
+float Tween_EaseInQuad   (float t, float b, float c, float d);
+float Tween_EaseOutQuad  (float t, float b, float c, float d);
+float Tween_EaseInOutQuad(float t, float b, float c, float d);
+float Tween_EaseOutBack  (float t, float b, float c, float d); // s = 1.70158
 
-// Optional: set easing function. Defaults to linear.
-void Tween_SetEase(Tween *tw, TweenEaseFn ease);
+// ---------- Timer.after ----------
+typedef struct {
+    bool  active;
+    float remaining;
+    TweenFinishFn cb;
+    void *ud;
+} TimerAfterJob;
 
-// Optional: set finish callback (called once when tween completes).
-void Tween_OnFinish(Tween *tw, TweenFinishFn fn, void *user);
+// Schedule a callback to fire once after `delay` seconds.
+// Returns true on success.
+bool Timer_After(float delay, TweenFinishFn cb, void *user);
 
-// Start tween: captures initial values and activates it.
-bool Tween_Start(Tween *tw);
-
-// Update all tweens in the default group.
-void Tween_UpdateAll(float dt);
-
-// Cancel all active tweens (does not change property values).
-void Tween_ClearAll(void);
-
-// --- Built-in easing ---
-float Tween_EaseLinear(float t, float b, float c, float d);
-
-// --- Implementation ---
 #ifdef TWEEN_IMPL
+// ---------- Implementation ----------
 
-static Tween g_tweenPool[TWEEN_MAX_TWEENS];
 static bool  g_initialized = false;
 
+static Tween g_tweenPool[TWEEN_MAX_TWEENS];
+static TimerAfterJob g_afterJobs[TIMER_MAX_AFTER_JOBS];
+
+// ---- Easings ----
 float Tween_EaseLinear(float t, float b, float c, float d) {
-    // classic linear: b + c * (t/d)
     if (d <= 0.0f) return b + c;
-    return b + (c * (t / d));
+    return b + c * (t / d);
+}
+float Tween_EaseInQuad(float t, float b, float c, float d) {
+    if (d <= 0.0f) return b + c;
+    t /= d; return b + c * t * t;
+}
+float Tween_EaseOutQuad(float t, float b, float c, float d) {
+    if (d <= 0.0f) return b + c;
+    t /= d; return b - c * t * (t - 2.0f);
+}
+float Tween_EaseInOutQuad(float t, float b, float c, float d) {
+    if (d <= 0.0f) return b + c;
+    t /= (d * 0.5f);
+    if (t < 1.0f) return b + (c * 0.5f) * t * t;
+    t -= 1.0f;
+    return b + (-c * 0.5f) * (t * (t - 2.0f) - 1.0f);
+}
+float Tween_EaseOutBack(float t, float b, float c, float d) {
+    if (d <= 0.0f) return b + c;
+    const float s = 1.70158f;
+    t = t / d - 1.0f;
+    return b + c * (t * t * ((s + 1.0f) * t + s) + 1.0f);
 }
 
+// ---- System init/clear ----
 void Tween_InitSystem(void) {
     for (int i = 0; i < TWEEN_MAX_TWEENS; ++i) {
         g_tweenPool[i].active = false;
         g_tweenPool[i].task_count = 0;
         g_tweenPool[i].on_finish = NULL;
         g_tweenPool[i].on_finish_ud = NULL;
+        g_tweenPool[i].elapsed = 0.0f;
+        g_tweenPool[i].duration = 0.0f;
+        g_tweenPool[i].ease = Tween_EaseLinear;
+    }
+    for (int j = 0; j < TIMER_MAX_AFTER_JOBS; ++j) {
+        g_afterJobs[j].active = false;
+        g_afterJobs[j].remaining = 0.0f;
+        g_afterJobs[j].cb = NULL;
+        g_afterJobs[j].ud = NULL;
     }
     g_initialized = true;
 }
@@ -134,9 +171,9 @@ bool Tween_Add(Tween *tw, float *target, float final_value) {
     if (tw->task_count >= TWEEN_MAX_TASKS_PER_TWEEN) return false;
     TweenTask *task = &tw->tasks[tw->task_count++];
     task->target = target;
-    // initial/change captured in Start(), not here
+    // We'll capture initial in Start(); temporarily store final in 'change'
     task->initial = 0.0f;
-    task->change  = final_value; // temporarily store final in 'change' slot
+    task->change  = final_value;
     return true;
 }
 
@@ -152,11 +189,10 @@ void Tween_OnFinish(Tween *tw, TweenFinishFn fn, void *user) {
 
 bool Tween_Start(Tween *tw) {
     if (!tw) return false;
-    // Convert stored finals into (initial, change)
     for (int i = 0; i < tw->task_count; ++i) {
         TweenTask *tk = &tw->tasks[i];
         float current = *(tk->target);
-        float final   = tk->change;    // previously stored final
+        float final   = tk->change;    // stored final
         tk->initial   = current;
         tk->change    = final - current;
     }
@@ -170,13 +206,12 @@ static void Tween_UpdateOne(Tween *tw, float dt) {
     tw->elapsed += dt;
 
     if (tw->elapsed >= tw->duration) {
-        // Snap to final values
+        // Snap to finals
         for (int i = 0; i < tw->task_count; ++i) {
             TweenTask *tk = &tw->tasks[i];
             *(tk->target) = tk->initial + tk->change;
         }
         tw->active = false;
-        // Make it reusable after completion
         tw->task_count = 0;
         if (tw->on_finish) tw->on_finish(tw->on_finish_ud);
         return;
@@ -190,14 +225,55 @@ static void Tween_UpdateOne(Tween *tw, float dt) {
     }
 }
 
+// ---- Timer.after ----
+static bool Timer_After_Alloc(float delay, TweenFinishFn cb, void *user) {
+    if (delay < 0.0f) delay = 0.0f;
+    for (int i = 0; i < TIMER_MAX_AFTER_JOBS; ++i) {
+        if (!g_afterJobs[i].active) {
+            g_afterJobs[i].active    = true;
+            g_afterJobs[i].remaining = delay;
+            g_afterJobs[i].cb        = cb;
+            g_afterJobs[i].ud        = user;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Timer_After(float delay, TweenFinishFn cb, void *user) {
+    if (!g_initialized) Tween_InitSystem();
+    if (!cb) return false;
+    return Timer_After_Alloc(delay, cb, user);
+}
+
+static void Timer_After_Update(float dt) {
+    for (int i = 0; i < TIMER_MAX_AFTER_JOBS; ++i) {
+        if (!g_afterJobs[i].active) continue;
+        g_afterJobs[i].remaining -= dt;
+        if (g_afterJobs[i].remaining <= 0.0f) {
+            TweenFinishFn cb = g_afterJobs[i].cb;
+            void *ud         = g_afterJobs[i].ud;
+            g_afterJobs[i].active = false;
+            g_afterJobs[i].cb = NULL;
+            g_afterJobs[i].ud = NULL;
+            if (cb) cb(ud);
+        }
+    }
+}
+
+// ---- Update/Clear ----
 void Tween_UpdateAll(float dt) {
     if (!g_initialized) return;
     if (dt <= 0.0f) return;
+
+    // Update tweens
     for (int i = 0; i < TWEEN_MAX_TWEENS; ++i) {
         if (g_tweenPool[i].active) {
             Tween_UpdateOne(&g_tweenPool[i], dt);
         }
     }
+    // Update Timer.after jobs
+    Timer_After_Update(dt);
 }
 
 void Tween_ClearAll(void) {
@@ -208,6 +284,14 @@ void Tween_ClearAll(void) {
         g_tweenPool[i].on_finish = NULL;
         g_tweenPool[i].on_finish_ud = NULL;
         g_tweenPool[i].elapsed = 0.0f;
+        g_tweenPool[i].duration = 0.0f;
+        g_tweenPool[i].ease = Tween_EaseLinear;
+    }
+    for (int j = 0; j < TIMER_MAX_AFTER_JOBS; ++j) {
+        g_afterJobs[j].active = false;
+        g_afterJobs[j].remaining = 0.0f;
+        g_afterJobs[j].cb = NULL;
+        g_afterJobs[j].ud = NULL;
     }
 }
 

@@ -60,7 +60,7 @@ static void InitDemo(void) {
         // Move x to endX, fade opacity to 255
         Tween_Add(tw, &birds[i].x, endX);
         Tween_Add(tw, &birds[i].opacity, 255.0f);
-        // Linear for now; easings will come later
+        Tween_SetEase(tw, Tween_EaseOutQuad);   // smooth deceleration
         Tween_Start(tw);
     }
 }
