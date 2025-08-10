@@ -1,8 +1,4 @@
-// game.c
-// Stage 1: Tween demo for CS50 Match-3 (Raylib).
-// Build (example):
-//   gcc game.c -o game -DTWEEN_IMPL -I. -lraylib -lm
-// Place a 24x24 sprite at: res/flappy.png
+// Stage 2: Chain demo for CS50 Match-3 (Raylib).
 
 #include "raylib.h"
 #include <stdlib.h>
