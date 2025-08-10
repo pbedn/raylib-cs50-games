@@ -17,3 +17,9 @@ Differences to CS course:
 
 * Used virtual screen from raylib examples/core/core_window_letterbox.c as replacement for push.lua
 * Instead of full state machine - switch
+
+### Resources
+
+* https://opengameart.org/users/buch
+* http://freemusicarchive.org/music/RoccoW/
+* http://cpetry.github.io/TextureGenerator-Online/
