@@ -21,7 +21,12 @@ Color blueColor = {103, 255, 255, 255};
 
 Rectangle paddleQuads[PADDLE_SKINS * PADDLE_SIZES];
 Rectangle ballQuads[7];
-Ball ball;
+
+Ball balls[MAX_BALLS];
+int activeBallCount = 0;
+
+Powerup powerups[MAX_POWERUPS];
+
 int brickCount;
 Brick bricks[MAX_BRICKS];
 Rectangle brickQuads[BRICK_QUAD_COUNT];
@@ -116,7 +121,8 @@ int main() {
     InitPaddleQuads();
     InitPaddle(&playerPaddle);
     InitBallQuads();
-    InitBall(&ball);
+    InitBalls();
+    InitPowerups();
     InitBrickQuads();
     InitBricks();
     InitParticleSystem(&ps, particleTexture, (Vector2){100, 100});
@@ -262,57 +268,84 @@ void InitGameState()
 void GameLogic(float dt)
 {
     UpdatePaddle(&playerPaddle, dt);
-    UpdateBall(&ball, dt);
+    UpdateBalls(dt);          // updates positions and wall bounces for all balls
+    UpdatePowerups(dt);       // updates falling powerups and paddle pickup
 
-    if (ball.y >= gameScreenHeight) {
-        PlaySound(hurtSound);
-        health--;
-
-        if (health == 0) {
-            currentState = STATE_GAME_OVER;
-        } else {
-            currentState = STATE_SERVE;
+    // Handle per-ball fail (falls below screen)
+    for (int bi = 0; bi < MAX_BALLS; ++bi) {
+        Ball* b = &balls[bi];
+        if (b->inPlay && b->y >= gameScreenHeight) {
+            b->inPlay = false;
+            activeBallCount = MAX(0, activeBallCount - 1);
         }
     }
 
-    // Ball-Paddle Collision
-    Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
-    Rectangle paddleRect = { playerPaddle.x, playerPaddle.y, (float)playerPaddle.width, (float)playerPaddle.height };
-    if (CheckCollisionRecs(ballRect, paddleRect))
-        HandleBallPaddleCollision(&ball, &playerPaddle);
+    // If all balls are gone, lose health and go to SERVE or GAME OVER
+    if (!AnyBallInPlay()) {
+        PlaySound(hurtSound);
+        health--;
+        if (health == 0) {
+            currentState = STATE_GAME_OVER;
+            return;
+        } else {
+            currentState = STATE_SERVE;
+            return;
+        }
+    }
 
-    // Ball-Brick Collision with Edge Detection
-    for (int i = 0; i < brickCount; i++) {
-        if (bricks[i].inPlay) {
-            Rectangle ballRect = { ball.x, ball.y, ball.width, ball.height };
+    // Ball-Paddle collision
+    Rectangle paddleRect = { playerPaddle.x, playerPaddle.y,
+                             (float)playerPaddle.width, (float)playerPaddle.height };
+    for (int bi = 0; bi < MAX_BALLS; ++bi) {
+        Ball* b = &balls[bi];
+        if (!b->inPlay) continue;
+
+        Rectangle ballRect = { b->x, b->y, b->width, b->height };
+        if (CheckCollisionRecs(ballRect, paddleRect)) {
+            HandleBallPaddleCollision(b, &playerPaddle);
+        }
+    }
+
+    // Ball-Brick collisions (one brick per ball per frame, like original)
+    for (int bi = 0; bi < MAX_BALLS; ++bi) {
+        Ball* b = &balls[bi];
+        if (!b->inPlay) continue;
+
+        for (int i = 0; i < brickCount; i++) {
+            if (!bricks[i].inPlay) continue;
+
+            Rectangle ballRect  = { b->x, b->y, b->width, b->height };
             Rectangle brickRect = { bricks[i].x, bricks[i].y, bricks[i].width, bricks[i].height };
             if (CheckCollisionRecs(ballRect, brickRect)) {
-                HandleBallBrickCollision(&ball, &bricks[i]);
+                bool wasInPlay = bricks[i].inPlay;
+                HandleBallBrickCollision(b, &bricks[i]);
 
-                // Particle
+                // Particle burst (unchanged)
                 ps.emitterPos = (Vector2){bricks[i].x + 16, bricks[i].y + 8};
-                Color startColor = (Color){0, 0, 255, 128}; // np. niebieski z alfa 128
-                Color endColor = (Color){0, 0, 255, 0};     // transparentny niebieski
-                    
+                Color startColor = (Color){0, 0, 255, 128};
+                Color endColor   = (Color){0, 0, 255,   0};
                 EmitParticle(&ps, startColor, endColor, 64);
 
-                break; // tylko jedna kolizja w jednej klatce
+                // If brick just got destroyed, attempt to spawn a powerup
+                if (wasInPlay && !bricks[i].inPlay) {
+                    TrySpawnPowerupAt(bricks[i].x + bricks[i].width/2.0f,
+                                      bricks[i].y + bricks[i].height/2.0f);
+                }
+                break; // only one brick per ball per frame
             }
         }
     }
 
     UpdateParticleSystem(&ps, dt);
 
-    if (CheckVictory() or IsKeyPressed(KEY_V))
-    {
+    if (CheckVictory() || IsKeyPressed(KEY_V)) {
         PlaySound(victorySound);
         currentState = STATE_VICTORY;
         return;
     }
 
-    // Dev Mode for debugging
-    if (IsKeyPressed(KEY_B))
-    {
+    // Dev Mode
+    if (IsKeyPressed(KEY_B)) {
         score = GetRandomValue(50, 500);
         currentState = STATE_GAME_OVER;
         return;
@@ -498,6 +531,130 @@ void UpdateBall(Ball *b, float dt)
     }
 }
 
+void InitBalls(void) {
+    for (int i = 0; i < MAX_BALLS; ++i) {
+        balls[i].inPlay = false;
+    }
+    activeBallCount = 0;
+}
+
+void ResetBallsToOne(void) {
+    InitBalls();
+    // Initialize one ball in the middle, stationary; Serve will set velocity
+    balls[0].x = gameScreenWidth / 2 - 4;
+    balls[0].y = gameScreenHeight / 2 - 4;
+    balls[0].dx = 0.0f;
+    balls[0].dy = 0.0f;
+    balls[0].width  = 8;
+    balls[0].height = 8;
+    balls[0].skin = 0;
+    balls[0].inPlay = true;
+    activeBallCount = 1;
+}
+
+bool AnyBallInPlay(void) {
+    return activeBallCount > 0;
+}
+
+void SpawnExtraBallsFrom(const Ball* src, int count) {
+    // Spawn up to 'count' new balls, cloning position/skin and giving varied velocities
+    for (int c = 0; c < count; ++c) {
+        // Find a free slot
+        int slot = -1;
+        for (int i = 0; i < MAX_BALLS; ++i) {
+            if (!balls[i].inPlay) { slot = i; break; }
+        }
+        if (slot < 0) return; // no room
+
+        balls[slot] = *src;              // copy position/size/skin
+        balls[slot].inPlay = true;
+        // Spread velocities: one to the left, one to the right
+        float base = (c % 2 == 0) ? -1.0f : 1.0f;
+        balls[slot].dx = (fabsf(src->dx) > 30.0f ? src->dx : 0.0f) + base * GetRandomValue(80, 140);
+        balls[slot].dy = (src->dy < -40.0f ? src->dy : -50.0f) - GetRandomValue(0, 30);
+        activeBallCount = MIN(MAX_BALLS, activeBallCount + 1);
+    }
+}
+
+void UpdateBalls(float dt) {
+    for (int i = 0; i < MAX_BALLS; ++i) {
+        if (!balls[i].inPlay) continue;
+        UpdateBall(&balls[i], dt);
+    }
+}
+
+static bool RectsOverlap(float x1, float y1, float w1, float h1,
+                         float x2, float y2, float w2, float h2) {
+    return !(x1 > x2 + w2 || x1 + w1 < x2 || y1 > y2 + h2 || y1 + h1 < y2);
+}
+
+void InitPowerups(void) {
+    for (int i = 0; i < MAX_POWERUPS; ++i) {
+        powerups[i].active = false;
+    }
+}
+
+void TrySpawnPowerupAt(float x, float y) {
+    // ~20% chance to spawn a multiball powerup on brick destroy
+    if (GetRandomValue(1, 100) > 20) return;
+
+    // Find free slot
+    for (int i = 0; i < MAX_POWERUPS; ++i) {
+        if (!powerups[i].active) {
+            powerups[i].active = true;
+            powerups[i].type   = POWERUP_MULTIBALL;
+            powerups[i].x = x - 8;   // center on brick center
+            powerups[i].y = y - 8;
+            powerups[i].dy = 60.0f;  // falling speed
+            powerups[i].width  = 16;
+            powerups[i].height = 16;
+            return;
+        }
+    }
+}
+
+void ActivatePowerup(Powerup* p) {
+    if (!p->active) return;
+
+    switch (p->type) {
+        case POWERUP_MULTIBALL: {
+            // Pick a reference ball (first active)
+            const Ball* src = NULL;
+            for (int i = 0; i < MAX_BALLS; ++i) {
+                if (balls[i].inPlay) { src = &balls[i]; break; }
+            }
+            if (src) {
+                SpawnExtraBallsFrom(src, 2); // spawn 2 new balls
+                PlaySound(recoverSound);     // reuse a pleasant sfx
+            }
+        } break;
+        default: break;
+    }
+
+    p->active = false;
+}
+
+void UpdatePowerups(float dt) {
+    for (int i = 0; i < MAX_POWERUPS; ++i) {
+        Powerup* p = &powerups[i];
+        if (!p->active) continue;
+
+        p->y += p->dy * dt;
+
+        // Paddle pickup
+        if (RectsOverlap(p->x, p->y, p->width, p->height,
+                         playerPaddle.x, playerPaddle.y, playerPaddle.width, playerPaddle.height)) {
+            ActivatePowerup(p);
+            continue;
+        }
+
+        // Despawn if below screen
+        if (p->y > gameScreenHeight) {
+            p->active = false;
+        }
+    }
+}
+
 void InitBrickQuads()
 {
     int count = 0;
@@ -662,12 +819,10 @@ void UpdatePaddleSelect(void)
         score  = 0;
 
         InitPaddle(&playerPaddle);
-        playerPaddle.skin = selectedPaddleSkin;   // apply chosen skin
-        // Keep default size from InitPaddle() (size = 2). Adjust if desired.
-
-        InitBall(&ball);
+        playerPaddle.skin = selectedPaddleSkin;
         InitBricks();
-
+        InitPowerups();
+        ResetBallsToOne();
         currentState = STATE_SERVE;
     }
 
@@ -682,15 +837,27 @@ void ServeState(float dt) {
     // Paddle movement
     UpdatePaddle(&playerPaddle, dt);
 
-    // Place ball above paddle
-    ball.x = playerPaddle.x + (playerPaddle.width / 2) - (ball.width / 2);
-    ball.y = playerPaddle.y - ball.height;
+    // Ensure exactly one ball is waiting to be served
+    if (!AnyBallInPlay()) {
+        ResetBallsToOne();
+    }
+
+    // Place all active balls above paddle (should be 1 in Serve)
+    for (int i = 0; i < MAX_BALLS; ++i) {
+        if (balls[i].inPlay) {
+            balls[i].x = playerPaddle.x + (playerPaddle.width / 2) - (balls[i].width / 2);
+            balls[i].y = playerPaddle.y - balls[i].height;
+        }
+    }
 
     // Wait for enter to serve
     if (IsKeyPressed(KEY_ENTER)) {
-        // Give ball a new velocity
-        ball.dx = GetRandomValue(-200, 200);
-        ball.dy = GetRandomValue(-60, -50);
+        for (int i = 0; i < MAX_BALLS; ++i) {
+            if (balls[i].inPlay) {
+                balls[i].dx = GetRandomValue(-200, 200);
+                balls[i].dy = GetRandomValue(-60, -50);
+            }
+        }
         currentState = STATE_PLAY;
     }
 }
@@ -720,10 +887,11 @@ void GameOverState()
             health = 3;
             score = 0;
             InitPaddle(&playerPaddle);
-            InitBall(&ball);
-            level = 1;
+            playerPaddle.skin = selectedPaddleSkin;
             InitBricks();
-            currentState = STATE_START;
+            InitPowerups();
+            ResetBallsToOne();
+            currentState = STATE_SERVE;
         }
     }
 }
@@ -742,13 +910,22 @@ bool CheckVictory() {
 void VictoryState() {
     UpdatePaddle(&playerPaddle, GetFrameTime());
 
-    // Ball tracks paddle
-    ball.x = playerPaddle.x + (playerPaddle.width / 2) - (ball.width / 2);
-    ball.y = playerPaddle.y - ball.height;
+    // Keep one ball above the paddle for display
+    if (!AnyBallInPlay()) {
+        ResetBallsToOne();
+    }
+    for (int i = 0; i < MAX_BALLS; ++i) {
+        if (balls[i].inPlay) {
+            balls[i].x = playerPaddle.x + (playerPaddle.width / 2) - (balls[i].width / 2);
+            balls[i].y = playerPaddle.y - balls[i].height;
+        }
+    }
 
     if (IsKeyPressed(KEY_ENTER)) {
         level++;
-        InitBricks();  // create new level-dependent map
+        InitBricks();
+        InitPowerups();
+        ResetBallsToOne();
         currentState = STATE_SERVE;
     }
 }
@@ -899,8 +1076,9 @@ void DrawPaddleSelect(void)
 void DrawGame()
 {
     DrawPaddle(&playerPaddle);
-    DrawBall(&ball);
+    DrawBalls();
     DrawBricks();
+    DrawPowerups();
 
     DrawHealth();
 
@@ -921,6 +1099,12 @@ void DrawBall(Ball *b)
     DrawTextureRec(mainTexture, ballQuads[b->skin], (Vector2){ b->x, b->y }, WHITE);
 }
 
+void DrawBalls(void) {
+    for (int i = 0; i < MAX_BALLS; ++i) {
+        if (balls[i].inPlay) DrawBall(&balls[i]);
+    }
+}
+
 void DrawPaddle(Paddle *p)
 {
     int index = (p->size - 1) + 4 * (p->skin - 1);
@@ -938,6 +1122,21 @@ void DrawBricks()
             WHITE
         );
         }
+    }
+}
+
+void DrawPowerups(void) {
+    for (int i = 0; i < MAX_POWERUPS; ++i) {
+        Powerup* p = &powerups[i];
+        if (!p->active) continue;
+
+        // Use an existing sprite rect for a simple icon (reuse a ball quad)
+        // This keeps asset footprint zero. You can swap to a dedicated region if you add art.
+        Rectangle icon = ballQuads[6]; // last ball sprite as a placeholder powerup icon
+        DrawTextureRec(mainTexture, icon, (Vector2){ p->x, p->y }, WHITE);
+
+        // Optional outline for clarity
+        // DrawRectangleLines((int)p->x, (int)p->y, p->width, p->height, BLUE);
     }
 }
 
@@ -980,8 +1179,9 @@ void DrawHealth()
 void DrawServe()
 {
     DrawPaddle(&playerPaddle);
-    DrawBall(&ball);
+    DrawBalls();
     DrawBricks();
+    DrawPowerups(); // shows any falling powerups if you returned to serve mid-fall
     DrawHealth();
 
     // Draw score at top right
@@ -1011,7 +1211,7 @@ void DrawGameOver()
 
 void DrawVictory() {
     DrawPaddle(&playerPaddle);
-    DrawBall(&ball);
+    DrawBalls();
     DrawBricks();
     DrawHealth();
 

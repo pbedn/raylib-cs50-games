@@ -60,18 +60,27 @@ void InitPaddle(Paddle *p);
 void UpdatePaddle(Paddle *p, float dt);
 void DrawPaddle(Paddle *p);
 
+#define MAX_BALLS 3
 
 typedef struct {
     float x, y;
     float dx, dy;
     int width, height;
-    int skin;  // 0 to 6
+    int skin;      // 0..6
+    bool inPlay;   // whether this ball is active
 } Ball;
 
 void InitBallQuads(void);
 void InitBall(Ball *b);
 void UpdateBall(Ball *b, float dt);
 void DrawBall(Ball *b);
+
+void InitBalls(void);
+void ResetBallsToOne(void);
+void SpawnExtraBallsFrom(const Ball* src, int count);
+void UpdateBalls(float dt);
+void DrawBalls(void);
+bool AnyBallInPlay(void);
 
 #define BRICK_WIDTH 32
 #define BRICK_HEIGHT 16
@@ -156,5 +165,28 @@ void DrawEnterHighScore(void);
 
 void UpdatePaddleSelect(void);
 void DrawPaddleSelect(void);
+
+/* --- Powerups --- */
+
+typedef enum {
+    POWERUP_MULTIBALL = 1
+} PowerupType;
+
+typedef struct {
+    float x, y;
+    float dy;
+    int width, height;
+    bool active;
+    PowerupType type;
+} Powerup;
+
+#define MAX_POWERUPS 3
+
+void InitPowerups(void);
+void UpdatePowerups(float dt);
+void DrawPowerups(void);
+void TrySpawnPowerupAt(float x, float y);
+void ActivatePowerup(Powerup* p);
+
 
 #endif // GAME_H
