@@ -20,9 +20,6 @@ static const int VIRTUAL_H = 216;
 static const int WINDOW_W = 1280;
 static const int WINDOW_H = 720;
 
-// Longest possible tween duration (seconds)
-static const float TIMER_MAX = 10.0f;
-
 // How many sprites to display (adjust if needed)
 #ifndef BIRD_COUNT
 #define BIRD_COUNT 600  // 1000 is fine on many machines; start moderate.
@@ -38,12 +35,50 @@ static Bird birds[BIRD_COUNT];
 static Texture2D birdTex;
 static RenderTexture2D target;
 
+
+static void RandomizeY(void *ud) {
+    // ud points to the Bird; change its Y so next loop looks different
+    Bird *b = (Bird*)ud;
+    int maxY = 216 - 24; // adjust to your virtual H and sprite size
+    b->y = (float)(GetRandomValue(0, maxY));
+}
+
+static void StartBirdChain(Bird *b) {
+    float endX = (float)VIRTUAL_W - 24.0f; // adjust to sprite width
+
+    Chain *ch = Chain_Create();
+    if (!ch) return;
+
+    // Small random delay before starting
+    Chain_Delay(ch, GetRandomValue(0, 50) / 100.0f); // 0.00..0.50s
+
+    // Tween to the right & fade in
+    Chain_TweenBegin(ch, 1.2f);
+    Chain_TweenSetEase(ch, Tween_EaseOutQuad);
+    Chain_TweenAdd(ch, &b->x, endX);
+    Chain_TweenAdd(ch, &b->opacity, 255.0f);
+    Chain_TweenEnd(ch);
+
+    // Pause briefly
+    Chain_Delay(ch, 0.25f);
+
+    // Tween back left & fade out (with a little overshoot feel)
+    Chain_TweenBegin(ch, 1.0f);
+    Chain_TweenSetEase(ch, Tween_EaseOutBack);
+    Chain_TweenAdd(ch, &b->x, 0.0f);
+    Chain_TweenAdd(ch, &b->opacity, 0.0f);
+    Chain_TweenEnd(ch);
+
+    // Call to randomize Y and immediately restart a new chain to loop
+    Chain_Call(ch, RandomizeY, b);
+    Chain_OnFinish(ch, /*on_finish=*/(TweenFinishFn)StartBirdChain, b);
+
+    Chain_Start(ch);
+}
+
 static void InitDemo(void) {
     // Load sprite (24x24 recommended)
     birdTex = LoadTexture("res/graphics/flappy.png");
-
-    // Create birds: start at x=0, random y, random duration, tween to endX
-    const float endX = (float)VIRTUAL_W - (float)birdTex.width;
 
     srand((unsigned)time(NULL));
     Tween_InitSystem();
@@ -52,16 +87,7 @@ static void InitDemo(void) {
         birds[i].x = 0.0f;
         birds[i].y = (float)(rand() % (VIRTUAL_H - birdTex.height));
         birds[i].opacity = 0.0f;
-
-        // Random duration in [0.5, TIMER_MAX]
-        float duration = 0.5f + ((float)rand() / (float)RAND_MAX) * (TIMER_MAX - 0.5f);
-
-        Tween *tw = Tween_Create(duration);
-        // Move x to endX, fade opacity to 255
-        Tween_Add(tw, &birds[i].x, endX);
-        Tween_Add(tw, &birds[i].opacity, 255.0f);
-        Tween_SetEase(tw, Tween_EaseOutQuad);   // smooth deceleration
-        Tween_Start(tw);
+        StartBirdChain(&birds[i]);
     }
 }
 
@@ -94,7 +120,7 @@ int main(void) {
             }
 
             // Simple label
-            DrawText("Stage 1: Tween (linear) — Press ESC to quit",
+            DrawText("Stage 2: Chain (easing) — Press ESC to quit",
                      6, 6, 8, (Color){200, 225, 255, 255});
         EndTextureMode();
 
