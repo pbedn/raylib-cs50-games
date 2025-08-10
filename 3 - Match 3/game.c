@@ -1,25 +1,27 @@
 // game.c
-// CS50 Match-3 — swap1 (“The Static Swap”) with real graphics
-// Mirrors main.lua behavior: 8x8 board, arrow-key selection, Enter to highlight & swap.
-// Graphics: loads match3.png, generates 32x32 quads, draws sprites with highlight/selection.
+// CS50 Match-3 — swap2: "The Tween Swap"
+// - Same behavior as swap1 (arrows move selection; Enter to select & swap; Esc cancels)
+// - Visual difference: the two tiles tween to each other's positions before finalizing the swap
 //
 // Controls:
 //   Arrows  - move selection
-//   Enter   - first press: highlight; second press: swap highlighted with current
+//   Enter   - first press: highlight; second press: tweened swap with highlighted tile
 //   Esc     - cancel highlight
-//   Esc (window) - close window
 //
 // Build (Windows/MinGW example):
-//   gcc game.c -o match3.exe -std=c99 -Wall -Wextra -I. -lraylib -lopengl32 -lgdi32 -lwinmm -lm
+//   gcc game.c -o match3.exe -std=c99 -Wall -Wextra -I. -DTWEEN_IMPL -lraylib -lopengl32 -lgdi32 -lwinmm -lm
 //
-// Place `match3.png` next to the executable (same dir).
-// Virtual resolution matches Lua: 512x288; board drawn at offset (128,16).
+// Assets:
+//   res/graphics/match3.png   (32x32 tiles, standard CS50 match-3 sheet)
 
 #include "raylib.h"
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
 #include <stdio.h>
+
+#define TWEEN_IMPL
+#include "tween.h"   // our header-only tween/after/chain system
 
 // ----------------- Virtual resolution & window -----------------
 static const int VIRTUAL_W = 512;
@@ -41,14 +43,14 @@ static const int BOARD_OFFSET_Y = 16;
 
 // ----------------- Tileset / quads -----------------
 typedef struct {
-    Rectangle src; // source rect inside the tileset texture
+    Rectangle src;
 } Quad;
 
 typedef struct {
     Texture2D tex;
-    Quad* quads;         // dynamic array of quads
-    int quadCount;       // total number of quads
-    int tileW, tileH;    // 32x32
+    Quad* quads;
+    int quadCount;
+    int tileW, tileH;
     int sheetCols;
     int sheetRows;
 } TileSet;
@@ -81,7 +83,6 @@ static bool LoadTileSet(const char* path, int tileW, int tileH) {
         }
     }
 
-    // Pixelated scaling like love.setDefaultFilter('nearest', 'nearest')
     SetTextureFilter(gTileset.tex, TEXTURE_FILTER_POINT);
     return true;
 }
@@ -94,14 +95,11 @@ static void UnloadTileSet(void) {
 
 // ----------------- Board model -----------------
 typedef struct {
-    // Grid coords are 1..8 like in Lua
-    int gridX;
-    int gridY;
-    // Pixel coords are (x,y) = ( (gridX-1)*32, (gridY-1)*32 )
-    float x;
+    int  gridX;     // 1..BOARD_COLS
+    int  gridY;     // 1..BOARD_ROWS
+    float x;        // pixel (local board space)
     float y;
-    // Quad index into tileset.quads (1..quadCount in Lua; here we store 0..quadCount-1)
-    int quadIndex;
+    int  quadIndex; // tileset quad index (0..quadCount-1)
 } Tile;
 
 typedef struct {
@@ -110,10 +108,19 @@ typedef struct {
 
 static Board board;
 
-// Selected (cursor) and highlighted (first chosen tile)
-static int selGX = 1, selGY = 1;   // selected tile grid coords
+// Cursor & highlight
+static int selGX = 1, selGY = 1;     // current selection (grid coords)
 static bool hasHighlight = false;
-static int hiGX = 1, hiGY = 1;
+static int hiGX = 1, hiGY = 1;       // highlighted tile (grid coords)
+
+// Swap tween state (to block input while animating)
+static bool gSwapActive = false;
+typedef struct {
+    int aGX, aGY;
+    int bGX, bGY;
+    int remaining;  // countdown; when both tweens finish -> 0
+} SwapAnimCtx;
+static SwapAnimCtx gSwapCtx = {0};
 
 // ----------------- Utility -----------------
 static inline Tile* TileAt(int gx, int gy) {
@@ -121,12 +128,12 @@ static inline Tile* TileAt(int gx, int gy) {
     return &board.tiles[gy - 1][gx - 1];
 }
 
-static inline void UpdateTileXY(Tile *t) {
+static inline void SetTileXYFromGrid(Tile *t) {
     t->x = (float)((t->gridX - 1) * TILE_SIZE);
     t->y = (float)((t->gridY - 1) * TILE_SIZE);
 }
 
-// ----------------- Board init & swap -----------------
+// ----------------- Board init & logical swap -----------------
 static void BoardInit(void) {
     srand((unsigned)time(NULL));
 
@@ -136,16 +143,17 @@ static void BoardInit(void) {
             t->gridX = gx;
             t->gridY = gy;
             t->quadIndex = GetRandomValue(0, gTileset.quadCount - 1);
-            UpdateTileXY(t);
+            SetTileXYFromGrid(t);
         }
     }
 
     selGX = 1; selGY = 1;
     hasHighlight = false;
     hiGX = 1; hiGY = 1;
+    gSwapActive = false;
 }
 
-static void SwapTilesAt(int ax, int ay, int bx, int by) {
+static void SwapTilesInArrayAndFix(int ax, int ay, int bx, int by) {
     if (ax == bx && ay == by) return;
 
     int iax = ax - 1, iay = ay - 1;
@@ -155,16 +163,73 @@ static void SwapTilesAt(int ax, int ay, int bx, int by) {
     board.tiles[iay][iax] = board.tiles[iby][ibx];
     board.tiles[iby][ibx] = tmp;
 
-    // Fix logical grid coords and pixel positions
     Tile *tA = &board.tiles[iay][iax];
     Tile *tB = &board.tiles[iby][ibx];
 
-    tA->gridX = ax; tA->gridY = ay; UpdateTileXY(tA);
-    tB->gridX = bx; tB->gridY = by; UpdateTileXY(tB);
+    tA->gridX = ax; tA->gridY = ay; SetTileXYFromGrid(tA);
+    tB->gridX = bx; tB->gridY = by; SetTileXYFromGrid(tB);
 }
 
-// ----------------- Input (swap1 logic) -----------------
+// ----------------- Tweened swap -----------------
+static void OnSwapTweenFinished(void *ud) {
+    // Decrement remaining; when both complete, finalize logical swap.
+    SwapAnimCtx *ctx = (SwapAnimCtx*)ud;
+    if (ctx->remaining > 0) ctx->remaining--;
+
+    if (ctx->remaining == 0) {
+        // Perform the actual logical swap in the board array and fix grid coords.
+        SwapTilesInArrayAndFix(ctx->aGX, ctx->aGY, ctx->bGX, ctx->bGY);
+
+        // After swap, selection should follow tile2 (highlighted), which moved to (aGX,aGY)
+        selGX = ctx->aGX;
+        selGY = ctx->aGY;
+
+        // Clear highlight and unlock input
+        hasHighlight = false;
+        gSwapActive = false;
+    }
+}
+
+static void StartSwapTween(int aGX, int aGY, int bGX, int bGY) {
+    // Prepare animated movement of the two tiles to each other's positions.
+    Tile *a = TileAt(aGX, aGY);
+    Tile *b = TileAt(bGX, bGY);
+    if (!a || !b) return;
+
+    // Targets are the *other* tile's grid-based positions (local board space)
+    float aTargetX = (float)((bGX - 1) * TILE_SIZE);
+    float aTargetY = (float)((bGY - 1) * TILE_SIZE);
+    float bTargetX = (float)((aGX - 1) * TILE_SIZE);
+    float bTargetY = (float)((aGY - 1) * TILE_SIZE);
+
+    // Mark that a swap is active
+    gSwapActive = true;
+    gSwapCtx = (SwapAnimCtx){ .aGX = aGX, .aGY = aGY, .bGX = bGX, .bGY = bGY, .remaining = 2 };
+
+    // Duration & easing (feel free to tweak)
+    const float dur = 0.15f;
+
+    // Tween A
+    Tween *twA = Tween_Create(dur);
+    Tween_Add(twA, &a->x, aTargetX);
+    Tween_Add(twA, &a->y, aTargetY);
+    Tween_SetEase(twA, Tween_EaseOutQuad);
+    Tween_OnFinish(twA, OnSwapTweenFinished, &gSwapCtx);
+    Tween_Start(twA);
+
+    // Tween B
+    Tween *twB = Tween_Create(dur);
+    Tween_Add(twB, &b->x, bTargetX);
+    Tween_Add(twB, &b->y, bTargetY);
+    Tween_SetEase(twB, Tween_EaseOutQuad);
+    Tween_OnFinish(twB, OnSwapTweenFinished, &gSwapCtx);
+    Tween_Start(twB);
+}
+
+// ----------------- Input (swap2 logic) -----------------
 static void HandleMovement(void) {
+    if (gSwapActive) return; // lock movement during tween
+
     if (IsKeyPressed(KEY_UP)    && selGY > 1)          selGY--;
     if (IsKeyPressed(KEY_DOWN)  && selGY < BOARD_ROWS) selGY++;
     if (IsKeyPressed(KEY_LEFT)  && selGX > 1)          selGX--;
@@ -172,6 +237,8 @@ static void HandleMovement(void) {
 }
 
 static void HandleSelectionAndSwap(void) {
+    if (gSwapActive) return; // lock selection during tween
+
     if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
         if (!hasHighlight) {
             hasHighlight = true;
@@ -179,11 +246,7 @@ static void HandleSelectionAndSwap(void) {
         } else {
             int aGX = selGX, aGY = selGY; // current cursor tile
             int bGX = hiGX, bGY = hiGY;   // highlighted tile
-            SwapTilesAt(aGX, aGY, bGX, bGY);
-
-            // After swap, mirror Lua: selectedTile = tile2 (now moved to aGX,aGY)
-            hasHighlight = false;
-            selGX = aGX; selGY = aGY;
+            StartSwapTween(aGX, aGY, bGX, bGY);
         }
     }
     if (IsKeyPressed(KEY_ESCAPE)) {
@@ -192,42 +255,7 @@ static void HandleSelectionAndSwap(void) {
 }
 
 // ----------------- Drawing -----------------
-static void DrawBoard(int offsetX, int offsetY) {
-    // Tiles
-    for (int gy = 1; gy <= BOARD_ROWS; ++gy) {
-        for (int gx = 1; gx <= BOARD_COLS; ++gx) {
-            Tile *t = TileAt(gx, gy);
-            // Source rect (quad)
-            Rectangle src = gTileset.quads[t->quadIndex].src;
-            // Destination position with offset
-            Vector2 pos = { t->x + (float)offsetX, t->y + (float)offsetY };
-            DrawTextureRec(gTileset.tex, src, pos, WHITE);
-
-            // Highlighted tile fill (translucent white with rounded corners)
-            if (hasHighlight && t->gridX == hiGX && t->gridY == hiGY) {
-                // half opacity
-                Color c = (Color){255, 255, 255, 128};
-                Rectangle r = { pos.x, pos.y, TILE_SIZE, TILE_SIZE };
-                DrawRectangleRounded(r, 0.20f, 4, c);
-            }
-        }
-    }
-
-    // Selected tile outline (thicker red rounded rectangle)
-    Tile *sel = TileAt(selGX, selGY);
-    if (sel) {
-        Vector2 pos = { sel->x + (float)offsetX, sel->y + (float)offsetY };
-        Rectangle r = { pos.x, pos.y, TILE_SIZE, TILE_SIZE };
-        // almost opaque red
-        Color rc = (Color){255, 0, 0, 234};
-        // rounded, 1px
-        DrawRectangleRoundedLines(r, 0.20f, 4, rc);
-
-    }
-}
-
 static void DrawBackdrop(void) {
-    // Simple panel to make tiles pop; sized to board area
     const int w = BOARD_COLS * TILE_SIZE;
     const int h = BOARD_ROWS * TILE_SIZE;
 
@@ -238,23 +266,55 @@ static void DrawBackdrop(void) {
     DrawRectangleRec(inner, (Color){15, 16, 22, 255});
 }
 
+static void DrawBoard(int offsetX, int offsetY) {
+    // Draw tiles
+    for (int gy = 1; gy <= BOARD_ROWS; ++gy) {
+        for (int gx = 1; gx <= BOARD_COLS; ++gx) {
+            Tile *t = TileAt(gx, gy);
+            Rectangle src = gTileset.quads[t->quadIndex].src;
+            Vector2 pos = { t->x + (float)offsetX, t->y + (float)offsetY };
+            DrawTextureRec(gTileset.tex, src, pos, WHITE);
+
+            // Highlighted tile translucent overlay
+            if (hasHighlight && t->gridX == hiGX && t->gridY == hiGY) {
+                Rectangle r = { pos.x, pos.y, TILE_SIZE, TILE_SIZE };
+                DrawRectangleRounded(r, 0.20f, 4, (Color){255,255,255,100});
+            }
+        }
+    }
+
+    // Selected tile outline (red)
+    Tile *sel = TileAt(selGX, selGY);
+    if (sel) {
+        Vector2 pos = { sel->x + (float)offsetX, sel->y + (float)offsetY };
+        Rectangle r = { pos.x, pos.y, TILE_SIZE, TILE_SIZE };
+        DrawRectangleLinesEx(r, 3.0f, (Color){255, 64, 64, 230}); // thick, non-rounded (portable)
+    }
+}
+
+// ----------------- App lifecycle -----------------
 int main(void) {
     SetConfigFlags(FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
-    InitWindow(WINDOW_W, WINDOW_H, "Match-3 — swap1 (sprites)");
+    InitWindow(WINDOW_W, WINDOW_H, "Match-3 — swap2 (tween swap)");
     SetTargetFPS(60);
 
     target = LoadRenderTexture(VIRTUAL_W, VIRTUAL_H);
     SetTextureFilter(target.texture, TEXTURE_FILTER_POINT);
 
     if (!LoadTileSet("res/graphics/match3.png", 32, 32)) {
-        TraceLog(LOG_ERROR, "Failed to load tileset 'match3.png'");
+        TraceLog(LOG_ERROR, "Failed to load tileset 'res/graphics/match3.png'");
         CloseWindow();
         return 1;
     }
 
+    Tween_InitSystem();
     BoardInit();
 
     while (!WindowShouldClose()) {
+        float dt = GetFrameTime();
+        Tween_UpdateAll(dt);
+
+        // Input
         HandleMovement();
         HandleSelectionAndSwap();
 
@@ -262,7 +322,7 @@ int main(void) {
         BeginTextureMode(target);
             ClearBackground((Color){18, 20, 24, 255});
 
-            DrawText("swap1 — Static Swap (Arrows: move, Enter: select/swap, Esc: cancel)",
+            DrawText("swap2 — Tween Swap (Arrows: move, Enter: select/swap, Esc: cancel)",
                      8, 4, 10, (Color){220,235,255,255});
 
             DrawBackdrop();
